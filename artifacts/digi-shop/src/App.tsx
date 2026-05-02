@@ -7,6 +7,14 @@ import { Home } from "@/pages/home";
 import { Catalog } from "@/pages/catalog";
 import { ProductDetail } from "@/pages/product-detail";
 import { Cart } from "@/pages/cart";
+import { About } from "@/pages/about";
+import { Contact } from "@/pages/contact";
+import { FAQ } from "@/pages/faq";
+import { Terms } from "@/pages/terms";
+import { Privacy } from "@/pages/privacy";
+import { Cookies } from "@/pages/cookies";
+import { Refunds } from "@/pages/refunds";
+import { Withdrawal } from "@/pages/withdrawal";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +32,14 @@ function Router() {
       <Route path="/catalog" component={Catalog} />
       <Route path="/products/:id" component={ProductDetail} />
       <Route path="/cart" component={Cart} />
+      <Route path="/about" component={About} />
+      <Route path="/contact" component={Contact} />
+      <Route path="/faq" component={FAQ} />
+      <Route path="/terms" component={Terms} />
+      <Route path="/privacy" component={Privacy} />
+      <Route path="/cookies" component={Cookies} />
+      <Route path="/refunds" component={Refunds} />
+      <Route path="/withdrawal" component={Withdrawal} />
       <Route component={NotFound} />
     </Switch>
   );
