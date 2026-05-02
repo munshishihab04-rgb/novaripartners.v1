@@ -1,11 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
-import { adminApi, type AdminProduct, type AdminProductFull, type AdminCategory, getAdminPassword } from "@/lib/admin-api";
+import {
+  adminApi,
+  type AdminProduct,
+  type AdminProductFull,
+  type AdminCategory,
+  type ImportResult,
+  getAdminPassword,
+} from "@/lib/admin-api";
+import {
+  parseCSV,
+  productsToCsv,
+  downloadCSV,
+  csvRowsToProducts,
+  CSV_HEADERS,
+  type CsvRow,
+} from "@/lib/csv-utils";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, Pencil, Search, Package2 } from "lucide-react";
+import {
+  RefreshCw, Pencil, Search, Package2, Download, Upload,
+  CheckSquare, Square, CheckCircle2, AlertCircle, X,
+} from "lucide-react";
 
 const PLATFORMS = ["windows", "macos", "cross-platform"] as const;
 
@@ -18,63 +36,54 @@ function InStockBadge({ inStock }: { inStock: boolean }) {
 }
 
 interface EditFormState {
-  name: string;
-  slug: string;
-  shortDescription: string;
-  description: string;
-  publisher: string;
-  version: string;
-  platform: string;
-  categoryId: number;
-  price: string;
-  originalPrice: string;
-  currency: string;
-  imageUrl: string;
-  deliveryMethod: string;
-  featuresText: string;
-  inStock: boolean;
-  isFeatured: boolean;
-  rating: string;
-  reviewCount: number;
+  name: string; slug: string; shortDescription: string; description: string;
+  publisher: string; version: string; platform: string; categoryId: number;
+  price: string; originalPrice: string; currency: string; imageUrl: string;
+  deliveryMethod: string; featuresText: string; inStock: boolean; isFeatured: boolean;
+  rating: string; reviewCount: number;
 }
 
 function buildFormState(p: AdminProductFull, categories: AdminCategory[]): EditFormState {
   return {
-    name: p.name,
-    slug: p.slug,
-    shortDescription: p.shortDescription,
-    description: p.description,
-    publisher: p.publisher,
-    version: p.version,
-    platform: p.platform,
-    categoryId: p.categoryId || (categories[0]?.id ?? 1),
-    price: p.price,
-    originalPrice: p.originalPrice || "",
-    currency: p.currency || "EUR",
-    imageUrl: p.imageUrl || "",
+    name: p.name, slug: p.slug, shortDescription: p.shortDescription,
+    description: p.description, publisher: p.publisher, version: p.version,
+    platform: p.platform, categoryId: p.categoryId || (categories[0]?.id ?? 1),
+    price: p.price, originalPrice: p.originalPrice || "",
+    currency: p.currency || "EUR", imageUrl: p.imageUrl || "",
     deliveryMethod: p.deliveryMethod,
     featuresText: (p.features || []).join("\n"),
-    inStock: p.inStock,
-    isFeatured: p.isFeatured,
-    rating: p.rating || "5.0",
-    reviewCount: p.reviewCount || 0,
+    inStock: p.inStock, isFeatured: p.isFeatured,
+    rating: p.rating || "5.0", reviewCount: p.reviewCount || 0,
   };
 }
 
 export function AdminProducts() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Edit modal
   const [editingProduct, setEditingProduct] = useState<AdminProductFull | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditFormState | null>(null);
+
+  // Export/Import
+  const [exporting, setExporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<CsvRow[]>([]);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -89,10 +98,115 @@ export function AdminProducts() {
     load();
   }, []);
 
+  // Filtered list
+  const filtered = products.filter((p) => {
+    const matchSearch = !search ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.categoryName || "").toLowerCase().includes(search.toLowerCase()) ||
+      p.publisher.toLowerCase().includes(search.toLowerCase());
+    const matchCat = categoryFilter === "all" || String(p.categoryId) === categoryFilter;
+    return matchSearch && matchCat;
+  });
+
+  // Selection helpers
+  const allSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
+  const someSelected = filtered.some((p) => selectedIds.has(p.id));
+  const selectedCount = filtered.filter((p) => selectedIds.has(p.id)).size ?? [...selectedIds].filter((id) => filtered.some((p) => p.id === id)).length;
+
+  const toggleAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) filtered.forEach((p) => next.delete(p.id));
+      else filtered.forEach((p) => next.add(p.id));
+      return next;
+    });
+  };
+
+  const toggleOne = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // ── EXPORT ──────────────────────────────────────────────────
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const selectedInView = filtered.filter((p) => selectedIds.has(p.id)).map((p) => p.id);
+      const ids = selectedInView.length > 0 ? selectedInView : filtered.map((p) => p.id);
+      const catId = categoryFilter !== "all" && selectedInView.length === 0
+        ? Number(categoryFilter) : undefined;
+
+      const fullProducts = await adminApi.exportProducts(
+        categoryFilter === "all" && selectedInView.length === 0 ? undefined : ids,
+        catId,
+      );
+
+      const csv = productsToCsv(fullProducts);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadCSV(`nexuskeys-products-${date}.csv`, csv);
+      toast({ title: "Export complete", description: `${fullProducts.length} product${fullProducts.length !== 1 ? "s" : ""} exported.` });
+    } catch (e: unknown) {
+      toast({ title: "Export failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportButtonLabel = () => {
+    const sel = [...selectedIds].filter((id) => filtered.some((p) => p.id === id));
+    if (sel.length > 0) return `Export ${sel.length} selected`;
+    if (categoryFilter !== "all") return `Export filtered (${filtered.length})`;
+    return `Export all (${products.length})`;
+  };
+
+  // ── IMPORT ──────────────────────────────────────────────────
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const rows = parseCSV(text);
+      setImportRows(rows);
+      setImportResult(null);
+      setImportOpen(true);
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  };
+
+  const handleImport = async () => {
+    if (!importRows.length) return;
+    setImporting(true);
+    try {
+      const products = csvRowsToProducts(importRows);
+      const result = await adminApi.importProducts(products);
+      setImportResult(result);
+      load();
+    } catch (e: unknown) {
+      toast({ title: "Import failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const header = CSV_HEADERS.join(",");
+    const example = [
+      "","My Product","my-product","Publisher Inc","2024","windows","Microsoft",
+      "49.99","69.99","EUR","Short description here","Full description here",
+      "Feature 1|Feature 2|Feature 3","Email delivery within 24 hours","",
+      "true","false","4.8","120",
+    ].join(",");
+    downloadCSV("nexuskeys-import-template.csv", "\uFEFF" + header + "\n" + example);
+  };
+
+  // ── EDIT MODAL ──────────────────────────────────────────────
   const openEdit = async (product: AdminProduct) => {
-    setEditOpen(true);
-    setEditLoading(true);
-    setForm(null);
+    setEditOpen(true); setEditLoading(true); setForm(null);
     try {
       const full = await adminApi.getProduct(product.id);
       setEditingProduct(full);
@@ -100,9 +214,7 @@ export function AdminProducts() {
     } catch {
       toast({ title: "Error", description: "Could not load product", variant: "destructive" });
       setEditOpen(false);
-    } finally {
-      setEditLoading(false);
-    }
+    } finally { setEditLoading(false); }
   };
 
   const handleSave = async () => {
@@ -111,55 +223,93 @@ export function AdminProducts() {
     try {
       const features = form.featuresText.split("\n").map((f) => f.trim()).filter(Boolean);
       await adminApi.updateProduct(editingProduct.id, {
-        ...form,
-        features,
+        ...form, features,
         originalPrice: form.originalPrice || null,
         imageUrl: form.imageUrl || null,
         categoryId: Number(form.categoryId),
         reviewCount: Number(form.reviewCount),
       } as Parameters<typeof adminApi.updateProduct>[1]);
-      toast({ title: "Saved", description: `${form.name} has been updated.` });
+      toast({ title: "Saved", description: `${form.name} updated.` });
       setEditOpen(false);
       load();
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Save failed", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
-  const filtered = products.filter((p) =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.categoryName || "").toLowerCase().includes(search.toLowerCase())
-  );
-
-  const f = form;
   const setF = (update: Partial<EditFormState>) => setForm((prev) => prev ? { ...prev, ...update } : prev);
+  const f = form;
 
   return (
     <AdminLayout>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
       <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Products</h1>
             <p className="text-slate-500 text-sm mt-0.5">{products.length} product{products.length !== 1 ? "s" : ""} in catalog</p>
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-1.5" />
+              Import CSV
+            </Button>
+            <Button size="sm" onClick={handleExport} disabled={exporting || loading}>
+              <Download className={`w-4 h-4 mr-1.5 ${exporting ? "animate-spin" : ""}`} />
+              {exporting ? "Exporting…" : exportButtonLabel()}
+            </Button>
+          </div>
         </div>
 
-        <div className="relative mb-5 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search products…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background"
-          />
+        {/* Filters row */}
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <div className="relative flex-1 min-w-48 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search products…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setSelectedIds(new Set()); }}
+              className="w-full h-10 pl-9 pr-4 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background"
+            />
+          </div>
+          <select
+            value={categoryFilter}
+            onChange={(e) => { setCategoryFilter(e.target.value); setSelectedIds(new Set()); }}
+            className="h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background"
+          >
+            <option value="all">All categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={String(c.id)}>{c.name}</option>
+            ))}
+          </select>
+          {someSelected && (
+            <div className="flex items-center gap-2 ml-auto bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5">
+              <CheckSquare className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-primary">
+                {[...selectedIds].filter((id) => filtered.some((p) => p.id === id)).length} selected
+              </span>
+              <button onClick={() => setSelectedIds(new Set())} className="ml-1 text-primary/60 hover:text-primary">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
+        {/* Table */}
         <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-8 space-y-3">
@@ -175,7 +325,12 @@ export function AdminProducts() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50">
-                    <th className="text-left px-6 py-3">Product</th>
+                    <th className="px-4 py-3 w-10">
+                      <button onClick={toggleAll} className="flex items-center text-slate-400 hover:text-primary transition-colors">
+                        {allSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : someSelected ? <CheckSquare className="w-4 h-4 opacity-50" /> : <Square className="w-4 h-4" />}
+                      </button>
+                    </th>
+                    <th className="text-left px-4 py-3">Product</th>
                     <th className="text-left px-4 py-3">Category</th>
                     <th className="text-left px-4 py-3">Platform</th>
                     <th className="text-right px-4 py-3">Price</th>
@@ -185,43 +340,51 @@ export function AdminProducts() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((product) => (
-                    <tr key={product.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 bg-slate-100 rounded-md flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                            {product.name.charAt(0)}
+                  {filtered.map((product) => {
+                    const isChecked = selectedIds.has(product.id);
+                    return (
+                      <tr
+                        key={product.id}
+                        className={`transition-colors ${isChecked ? "bg-primary/5" : "hover:bg-slate-50"}`}
+                      >
+                        <td className="px-4 py-3">
+                          <button onClick={() => toggleOne(product.id)} className="flex items-center text-slate-400 hover:text-primary transition-colors">
+                            {isChecked ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 bg-slate-100 rounded-md flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                              {product.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-800 line-clamp-1">{product.name}</p>
+                              <p className="text-xs text-slate-400">{product.publisher} · v{product.version}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium text-slate-800 line-clamp-1">{product.name}</p>
-                            <p className="text-xs text-slate-400">{product.publisher} · v{product.version}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 text-xs capitalize">{product.categoryName || "—"}</td>
-                      <td className="px-4 py-3 text-slate-600 text-xs capitalize">{product.platform}</td>
-                      <td className="px-4 py-3 text-right font-mono font-semibold text-slate-800">
-                        € {Number(product.price).toFixed(2)}
-                        {product.originalPrice && (
-                          <span className="block text-xs text-slate-400 line-through">€ {Number(product.originalPrice).toFixed(2)}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3"><InStockBadge inStock={product.inStock} /></td>
-                      <td className="px-4 py-3">
-                        {product.isFeatured ? (
-                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Featured</span>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(product)} className="h-8 text-xs">
-                          <Pencil className="w-3 h-3 mr-1.5" />
-                          Edit
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 text-xs capitalize">{product.categoryName || "—"}</td>
+                        <td className="px-4 py-3 text-slate-600 text-xs capitalize">{product.platform}</td>
+                        <td className="px-4 py-3 text-right font-mono font-semibold text-slate-800">
+                          € {Number(product.price).toFixed(2)}
+                          {product.originalPrice && (
+                            <span className="block text-xs text-slate-400 line-through">€ {Number(product.originalPrice).toFixed(2)}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3"><InStockBadge inStock={product.inStock} /></td>
+                        <td className="px-4 py-3">
+                          {product.isFeatured
+                            ? <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Featured</span>
+                            : <span className="text-xs text-slate-300">—</span>}
+                        </td>
+                        <td className="px-6 py-3 text-right">
+                          <Button size="sm" variant="outline" onClick={() => openEdit(product)} className="h-8 text-xs">
+                            <Pencil className="w-3 h-3 mr-1.5" />Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -229,6 +392,128 @@ export function AdminProducts() {
         </div>
       </div>
 
+      {/* ── IMPORT MODAL ─────────────────────────────────────── */}
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) setImportOpen(o); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Products from CSV</DialogTitle>
+          </DialogHeader>
+
+          {importResult ? (
+            /* Results view */
+            <div className="py-4 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <CheckCircle2 className="w-6 h-6 text-green-600 mx-auto mb-1" />
+                  <p className="text-2xl font-bold text-green-700">{importResult.created}</p>
+                  <p className="text-xs text-green-600 font-medium">Created</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+                  <RefreshCw className="w-6 h-6 text-blue-600 mx-auto mb-1" />
+                  <p className="text-2xl font-bold text-blue-700">{importResult.updated}</p>
+                  <p className="text-xs text-blue-600 font-medium">Updated</p>
+                </div>
+                <div className={`rounded-xl p-4 text-center border ${importResult.errors.length > 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-border"}`}>
+                  <AlertCircle className={`w-6 h-6 mx-auto mb-1 ${importResult.errors.length > 0 ? "text-red-500" : "text-slate-400"}`} />
+                  <p className={`text-2xl font-bold ${importResult.errors.length > 0 ? "text-red-600" : "text-slate-500"}`}>{importResult.errors.length}</p>
+                  <p className={`text-xs font-medium ${importResult.errors.length > 0 ? "text-red-500" : "text-slate-400"}`}>Errors</p>
+                </div>
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 max-h-40 overflow-y-auto">
+                  <p className="text-xs font-semibold text-red-700 mb-2">Error details:</p>
+                  {importResult.errors.map((err, i) => (
+                    <p key={i} className="text-xs text-red-600 font-mono">{err}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Preview view */
+            <div className="py-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
+                  <p className="text-sm font-semibold text-blue-700">
+                    {importRows.length} row{importRows.length !== 1 ? "s" : ""} found in CSV
+                  </p>
+                  <p className="text-xs text-blue-500 mt-0.5">
+                    Products will be created or updated (matched by slug)
+                  </p>
+                </div>
+                <button
+                  onClick={downloadTemplate}
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  <Download className="w-3 h-3" />
+                  Download template
+                </button>
+              </div>
+
+              {importRows.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                    Preview (first {Math.min(5, importRows.length)} rows)
+                  </p>
+                  <div className="overflow-x-auto border border-border rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-border">
+                          {["name", "slug", "category", "platform", "price", "inStock", "isFeatured"].map((h) => (
+                            <th key={h} className="text-left px-3 py-2 font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {importRows.slice(0, 5).map((row, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            {["name", "slug", "category", "platform", "price", "inStock", "isFeatured"].map((h) => (
+                              <td key={h} className="px-3 py-2 text-slate-700 max-w-32 truncate">{row[h] || "—"}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importRows.length > 5 && (
+                    <p className="text-xs text-slate-400 mt-1.5 text-center">
+                      …and {importRows.length - 5} more row{importRows.length - 5 !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-700 font-medium mb-1">CSV format notes:</p>
+                <ul className="text-xs text-amber-600 space-y-0.5 list-disc list-inside">
+                  <li>Use pipe <code className="bg-amber-100 px-1 rounded">|</code> to separate multiple features (e.g. <code className="bg-amber-100 px-1 rounded">Feature 1|Feature 2</code>)</li>
+                  <li>Existing products matched by <strong>slug</strong> will be updated; new slugs create new products</li>
+                  <li>Platform must be: <code className="bg-amber-100 px-1 rounded">windows</code>, <code className="bg-amber-100 px-1 rounded">macos</code>, or <code className="bg-amber-100 px-1 rounded">cross-platform</code></li>
+                  <li>inStock and isFeatured: use <code className="bg-amber-100 px-1 rounded">true</code> or <code className="bg-amber-100 px-1 rounded">false</code></li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            {importResult ? (
+              <Button onClick={() => setImportOpen(false)}>Close</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
+                <Button onClick={handleImport} disabled={importing || importRows.length === 0} className="min-w-32">
+                  {importing ? (
+                    <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Importing…</>
+                  ) : (
+                    `Import ${importRows.length} product${importRows.length !== 1 ? "s" : ""}`
+                  )}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── EDIT MODAL ───────────────────────────────────────── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -285,15 +570,13 @@ export function AdminProducts() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Short Description</label>
                 <textarea rows={2} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" value={f.shortDescription} onChange={(e) => setF({ shortDescription: e.target.value })} />
               </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Full Description</label>
                 <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-y" value={f.description} onChange={(e) => setF({ description: e.target.value })} />
               </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Features (one per line)</label>
-                <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono resize-y" value={f.featuresText} onChange={(e) => setF({ featuresText: e.target.value })} placeholder={"Lifetime license\nAll future updates included\n..."}/>
+                <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono resize-y" value={f.featuresText} onChange={(e) => setF({ featuresText: e.target.value })} placeholder={"Lifetime license\nAll future updates included\n..."} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
