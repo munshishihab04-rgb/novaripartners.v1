@@ -10,6 +10,7 @@ import ProductDetail from "@/pages/product-detail";
 import Cart from "@/pages/cart";
 import Checkout from "@/pages/checkout";
 import About from "@/pages/about";
+import OrderSuccess from "@/pages/order-success";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/cart" component={Cart} />
       <Route path="/checkout" component={Checkout} />
       <Route path="/about" component={About} />
+      <Route path="/order-success" component={OrderSuccess} />
       <Route component={NotFound} />
     </Switch>
   );
