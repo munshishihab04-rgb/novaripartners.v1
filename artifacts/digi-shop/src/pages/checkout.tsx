@@ -2,9 +2,11 @@ import { Layout } from "@/components/layout";
 import { useGetCart } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
-import { ShoppingCart, Lock, ShieldCheck, Zap, ArrowLeft } from "lucide-react";
+import { ShoppingCart, Lock, ShieldCheck, Zap, ArrowLeft, X, AlertTriangle, ExternalLink } from "lucide-react";
+
+type OverlayState = "idle" | "loading" | "open" | "blocked" | "error";
 
 export function Checkout() {
   const { data: cart, isLoading } = useGetCart();
@@ -14,6 +16,12 @@ export function Checkout() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
+
+  const [overlayState, setOverlayState] = useState<OverlayState>("idle");
+  const [hostedPage, setHostedPage] = useState("");
+  const [orderId, setOrderId] = useState("");
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const blockedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEmpty = !cart?.items || cart.items.length === 0;
 
@@ -30,79 +38,200 @@ export function Checkout() {
     e.preventDefault();
     setApiError("");
     const errs = validate();
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
-      return;
-    }
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
     setSubmitting(true);
+    setOverlayState("loading");
 
     try {
-      const sessionId =
-        localStorage.getItem("nexuskeys_session") || "default-session";
-
+      const sessionId = localStorage.getItem("nexuskeys_session") || "default-session";
       const res = await fetch("/api/checkout/create-order", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId,
-        },
-        body: JSON.stringify({
-          customerName: form.name.trim(),
-          customerEmail: form.email.trim(),
-        }),
+        headers: { "Content-Type": "application/json", "x-session-id": sessionId },
+        body: JSON.stringify({ customerName: form.name.trim(), customerEmail: form.email.trim() }),
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         setApiError(data.error || "An unexpected error occurred.");
+        setOverlayState("idle");
         return;
       }
 
       localStorage.setItem("nexuskeys_pending_order", data.orderId);
       trackEvent("start_checkout", { metadata: { orderId: data.orderId } });
-      window.location.href = data.hostedPage;
+      setOrderId(data.orderId);
+      setHostedPage(data.hostedPage);
+      setOverlayState("open");
     } catch {
       setApiError("Could not connect to the payment gateway. Please try again.");
+      setOverlayState("idle");
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <Layout>
-        <div className="container mx-auto px-4 py-16 max-w-5xl">
-          <div className="h-96 bg-card border border-border rounded-2xl animate-pulse" />
-        </div>
-      </Layout>
-    );
-  }
+  // Detect if iframe is blocked by X-Frame-Options
+  useEffect(() => {
+    if (overlayState !== "open" || !hostedPage) return;
 
-  if (isEmpty) {
-    return (
-      <Layout>
-        <div className="container mx-auto px-4 py-24 max-w-lg text-center">
-          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-6 text-muted-foreground">
-            <ShoppingCart className="w-8 h-8" />
-          </div>
-          <h1 className="text-2xl font-bold mb-3">Your cart is empty</h1>
-          <p className="text-muted-foreground mb-8">
-            Add some software licenses before proceeding to checkout.
-          </p>
-          <Link href="/catalog">
-            <Button size="lg">Browse Catalog</Button>
-          </Link>
+    // Give the iframe 4 seconds to load — if it errors, we catch it below
+    blockedTimer.current = setTimeout(() => {
+      // Check if iframe contentDocument is accessible (same-origin) or null/blocked
+      try {
+        const doc = iframeRef.current?.contentDocument;
+        // If doc is null and readyState hasn't fired, it's likely blocked
+        if (!doc) setOverlayState("blocked");
+      } catch {
+        setOverlayState("blocked");
+      }
+    }, 4000);
+
+    return () => {
+      if (blockedTimer.current) clearTimeout(blockedTimer.current);
+    };
+  }, [overlayState, hostedPage]);
+
+  const handleIframeLoad = () => {
+    if (blockedTimer.current) clearTimeout(blockedTimer.current);
+    // If we can read contentDocument location it means same-origin success
+    // For cross-origin (Nexi), doc exists but throws on .location — that's fine, means it loaded
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc && doc.body && doc.body.innerHTML === "") {
+        // Empty body = likely blocked by X-Frame-Options
+        setOverlayState("blocked");
+      }
+    } catch {
+      // Cross-origin error = iframe loaded successfully on Nexi domain
+    }
+  };
+
+  const handleIframeError = () => {
+    if (blockedTimer.current) clearTimeout(blockedTimer.current);
+    setOverlayState("blocked");
+  };
+
+  const handleFallbackRedirect = () => {
+    window.location.href = hostedPage;
+  };
+
+  const handleCloseOverlay = () => {
+    if (blockedTimer.current) clearTimeout(blockedTimer.current);
+    setOverlayState("idle");
+    setHostedPage("");
+    setOrderId("");
+  };
+
+  if (isLoading) return (
+    <Layout>
+      <div className="container mx-auto px-4 py-16 max-w-5xl">
+        <div className="h-96 bg-card border border-border rounded-2xl animate-pulse" />
+      </div>
+    </Layout>
+  );
+
+  if (isEmpty) return (
+    <Layout>
+      <div className="container mx-auto px-4 py-24 max-w-lg text-center">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-6 text-muted-foreground">
+          <ShoppingCart className="w-8 h-8" />
         </div>
-      </Layout>
-    );
-  }
+        <h1 className="text-2xl font-bold mb-3">Your cart is empty</h1>
+        <p className="text-muted-foreground mb-8">Add some software licenses before proceeding to checkout.</p>
+        <Link href="/catalog"><Button size="lg">Browse Catalog</Button></Link>
+      </div>
+    </Layout>
+  );
 
   const totalEur = cart!.total.toFixed(2);
 
   return (
     <Layout>
+      {/* Payment Overlay */}
+      {(overlayState === "loading" || overlayState === "open" || overlayState === "blocked") && (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(10,12,20,0.82)", backdropFilter: "blur(6px)" }}>
+
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-border shadow-sm shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Lock className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800">Secure Payment</p>
+                <p className="text-xs text-slate-400">Powered by Nexi XPay · SSL encrypted</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-mono font-bold text-slate-700">EUR {totalEur}</span>
+              <button
+                onClick={handleCloseOverlay}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
+                title="Cancel payment"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Content area */}
+          <div className="flex-1 relative overflow-hidden">
+
+            {/* Loading spinner */}
+            {overlayState === "loading" && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                <div className="w-14 h-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+                <p className="text-white/80 text-sm font-medium">Connecting to payment gateway…</p>
+              </div>
+            )}
+
+            {/* Iframe */}
+            {overlayState === "open" && hostedPage && (
+              <iframe
+                ref={iframeRef}
+                src={hostedPage}
+                onLoad={handleIframeLoad}
+                onError={handleIframeError}
+                className="w-full h-full border-0"
+                title="Nexi XPay Secure Payment"
+                allow="payment"
+                sandbox="allow-scripts allow-forms allow-same-origin allow-top-navigation allow-popups"
+              />
+            )}
+
+            {/* Blocked fallback */}
+            {overlayState === "blocked" && (
+              <div className="absolute inset-0 flex items-center justify-center p-6">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-8 text-center">
+                  <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertTriangle className="w-7 h-7 text-amber-500" />
+                  </div>
+                  <h2 className="text-lg font-bold text-slate-800 mb-2">External Payment Page</h2>
+                  <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                    Nexi's payment page needs to open in a new tab for security reasons. Your order has already been created — click below to complete payment.
+                  </p>
+                  <Button className="w-full mb-3" onClick={handleFallbackRedirect}>
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Complete Payment on Nexi
+                  </Button>
+                  <button
+                    onClick={handleCloseOverlay}
+                    className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    Cancel and go back
+                  </button>
+                  {orderId && (
+                    <p className="text-xs text-slate-300 mt-4 font-mono">Order: {orderId}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Page header */}
       <div className="bg-muted/40 border-b border-border py-8">
         <div className="container mx-auto px-4 max-w-5xl">
           <Link href="/cart" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-4">
@@ -115,6 +244,7 @@ export function Checkout() {
 
       <div className="container mx-auto px-4 max-w-5xl py-10">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          {/* Form */}
           <div className="lg:col-span-3">
             <div className="bg-white border border-border rounded-2xl p-8 shadow-sm">
               <h2 className="text-lg font-bold text-foreground mb-6">Contact Information</h2>
@@ -136,9 +266,7 @@ export function Checkout() {
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     className={`w-full h-11 px-4 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-background ${errors.name ? "border-destructive" : "border-input"}`}
                   />
-                  {errors.name && (
-                    <p className="text-sm text-destructive mt-1">{errors.name}</p>
-                  )}
+                  {errors.name && <p className="text-sm text-destructive mt-1">{errors.name}</p>}
                 </div>
 
                 <div>
@@ -154,12 +282,8 @@ export function Checkout() {
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     className={`w-full h-11 px-4 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-background ${errors.email ? "border-destructive" : "border-input"}`}
                   />
-                  {errors.email && (
-                    <p className="text-sm text-destructive mt-1">{errors.email}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-1.5">
-                    Your license key will be delivered to this address.
-                  </p>
+                  {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
+                  <p className="text-xs text-muted-foreground mt-1.5">Your license key will be delivered to this address.</p>
                 </div>
 
                 {apiError && (
@@ -175,7 +299,7 @@ export function Checkout() {
                     disabled={submitting}
                   >
                     {submitting ? (
-                      "Connecting to payment gateway..."
+                      "Connecting to payment gateway…"
                     ) : (
                       <>
                         <Lock className="mr-2 w-4 h-4" />
@@ -190,17 +314,16 @@ export function Checkout() {
                   <Link href="/terms" className="text-primary hover:underline">Terms & Conditions</Link>,{" "}
                   <Link href="/refunds" className="text-primary hover:underline">Refund Policy</Link>, and{" "}
                   <Link href="/withdrawal" className="text-primary hover:underline">Right of Withdrawal</Link>.
-                  You expressly consent to immediate digital delivery and acknowledge that you waive your right of withdrawal upon key delivery.
+                  You expressly consent to immediate digital delivery and waive your right of withdrawal upon key delivery.
                 </p>
               </form>
             </div>
           </div>
 
+          {/* Order summary */}
           <div className="lg:col-span-2 space-y-5">
             <div className="bg-white border border-border rounded-2xl p-6 shadow-sm">
-              <h3 className="font-bold text-foreground mb-4 pb-3 border-b border-border">
-                Order Summary
-              </h3>
+              <h3 className="font-bold text-foreground mb-4 pb-3 border-b border-border">Order Summary</h3>
               <ul className="space-y-3 mb-4">
                 {cart!.items.map((item) => (
                   <li key={item.id} className="flex justify-between items-start gap-3">
@@ -213,13 +336,10 @@ export function Checkout() {
                         <p className="text-xs text-muted-foreground">Digital License Key</p>
                       </div>
                     </div>
-                    <span className="text-sm font-mono font-semibold shrink-0">
-                      EUR {item.price.toFixed(2)}
-                    </span>
+                    <span className="text-sm font-mono font-semibold shrink-0">EUR {item.price.toFixed(2)}</span>
                   </li>
                 ))}
               </ul>
-
               <div className="border-t border-border pt-3 space-y-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Subtotal</span>
