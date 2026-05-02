@@ -1,7 +1,7 @@
 import { Layout } from "@/components/layout";
 import { useGetCart, useRemoveFromCart, getGetCartQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { Trash2, ShoppingCart, ArrowRight, ShieldCheck, CreditCard } from "lucide-react";
+import { Trash2, ShoppingCart, ArrowRight, ShieldCheck, CreditCard, Lock } from "lucide-react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -36,95 +36,104 @@ export function Cart() {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8 lg:py-12 max-w-6xl">
-        <h1 className="text-3xl font-bold tracking-tight mb-8">Checkout</h1>
+      <div className="bg-white border-b border-border py-8 mb-8">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Secure Checkout</h1>
+        </div>
+      </div>
 
+      <div className="container mx-auto px-4 pb-20 max-w-6xl">
         {isLoading ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-4">
-              <div className="h-32 bg-card border border-border rounded-xl animate-pulse" />
-              <div className="h-32 bg-card border border-border rounded-xl animate-pulse" />
+              <div className="h-32 bg-white border border-border rounded-2xl animate-pulse" />
+              <div className="h-32 bg-white border border-border rounded-2xl animate-pulse" />
             </div>
-            <div className="h-64 bg-card border border-border rounded-xl animate-pulse" />
+            <div className="h-[400px] bg-white border border-border rounded-2xl animate-pulse" />
           </div>
         ) : isEmpty ? (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center py-24 bg-card/30 border border-dashed border-border/50 rounded-2xl"
+            className="text-center py-24 bg-white border border-border rounded-2xl shadow-sm"
           >
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-6 text-muted-foreground">
-              <ShoppingCart className="w-8 h-8" />
+            <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-6 text-muted-foreground">
+              <ShoppingCart className="w-10 h-10" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Your cart is empty</h2>
-            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-              Looks like you haven't added any software licenses to your cart yet. Browse our catalog to find what you need.
+            <h2 className="text-2xl font-bold mb-3 text-foreground">Your cart is empty</h2>
+            <p className="text-muted-foreground mb-8 max-w-md mx-auto text-lg">
+              Looks like you haven't added any software licenses to your cart yet.
             </p>
             <Link href="/catalog">
-              <Button size="lg">
+              <Button size="lg" className="rounded-full h-14 px-8 font-bold shadow-md hover:shadow-lg transition-shadow">
                 Browse Catalog
-                <ArrowRight className="ml-2 w-4 h-4" />
+                <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </Link>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
             {/* Left: Cart Items */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
-                <div className="hidden sm:grid grid-cols-12 gap-4 p-4 border-b border-border/50 bg-muted/30 text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                  <div className="col-span-7">Product</div>
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+                <div className="hidden sm:grid grid-cols-12 gap-4 p-5 border-b border-border bg-muted/20 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <div className="col-span-8">Product</div>
                   <div className="col-span-3 text-right">Price</div>
-                  <div className="col-span-2 text-right">Action</div>
+                  <div className="col-span-1 text-center"></div>
                 </div>
                 
-                <ul className="divide-y divide-border/50">
+                <ul className="divide-y divide-border">
                   {cart.items.map((item, idx) => (
                     <motion.li 
                       key={item.id}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.3, delay: idx * 0.1 }}
-                      className="p-4 sm:p-6 hover:bg-muted/10 transition-colors"
+                      className="p-5 hover:bg-muted/10 transition-colors"
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-                        <div className="sm:col-span-7 flex items-center gap-4">
-                          <div className="w-16 h-16 bg-background border border-border/50 rounded-md flex items-center justify-center overflow-hidden shrink-0">
+                        <div className="sm:col-span-8 flex items-center gap-5">
+                          <div className="w-20 h-20 bg-muted/30 border border-border rounded-xl flex items-center justify-center shrink-0">
                             {item.imageUrl ? (
-                              <img src={item.imageUrl} alt={item.productName} className="w-12 h-12 object-contain" />
+                              <img src={item.imageUrl} alt={item.productName} className="w-14 h-14 object-contain mix-blend-multiply" />
                             ) : (
-                              <div className="text-primary font-bold text-xl">{item.productName.charAt(0)}</div>
+                              <div className="text-primary font-bold text-2xl">{item.productName.charAt(0)}</div>
                             )}
                           </div>
                           <div>
-                            <Link href={`/products/${item.productId}`} className="font-semibold hover:text-primary transition-colors text-base line-clamp-1">
+                            <Link href={`/products/${item.productId}`} className="font-bold text-lg hover:text-primary transition-colors text-foreground line-clamp-2 leading-snug mb-1">
                               {item.productName}
                             </Link>
-                            <div className="text-xs text-muted-foreground font-mono mt-1">
-                              Digital License Key
+                            <div className="text-xs font-medium text-primary bg-primary/10 inline-block px-2 py-0.5 rounded">
+                              Instant Digital Key
                             </div>
                           </div>
                         </div>
                         
-                        <div className="sm:col-span-3 text-left sm:text-right font-mono font-bold text-lg">
+                        <div className="sm:col-span-3 text-left sm:text-right font-mono font-bold text-xl text-foreground">
                           {cart.currency} {item.price.toFixed(2)}
                         </div>
                         
-                        <div className="sm:col-span-2 text-right">
+                        <div className="sm:col-span-1 flex justify-end">
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            className="text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full"
                             onClick={() => handleRemove(item.id, item.productName)}
                             disabled={removeFromCart.isPending}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-5 h-5" />
                           </Button>
                         </div>
                       </div>
                     </motion.li>
                   ))}
                 </ul>
+              </div>
+              
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground bg-white p-4 rounded-xl border border-border">
+                <Lock className="w-4 h-4 text-green-500" />
+                All transactions are secure and encrypted.
               </div>
             </div>
 
@@ -133,40 +142,40 @@ export function Cart() {
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-card border border-border/50 rounded-xl p-6 sticky top-24 shadow-xl"
+                className="bg-white border border-border rounded-2xl p-8 sticky top-24 shadow-xl shadow-primary/5"
               >
-                <h3 className="font-bold text-lg mb-6 pb-4 border-b border-border/50">Order Summary</h3>
+                <h3 className="font-bold text-xl mb-6 pb-4 border-b border-border text-foreground">Order Summary</h3>
                 
-                <div className="space-y-3 mb-6 font-mono text-sm">
+                <div className="space-y-4 mb-6 text-sm font-medium">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span>
-                    <span>{cart.currency} {cart.total.toFixed(2)}</span>
+                    <span className="font-mono text-foreground">{cart.currency} {cart.total.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Taxes</span>
                     <span>Calculated at checkout</span>
                   </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Delivery</span>
-                    <span className="text-green-500">Free (Instant)</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Delivery</span>
+                    <span className="text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded">Free (Instant)</span>
                   </div>
                 </div>
                 
-                <div className="pt-4 border-t border-border/50 mb-8">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-lg">Total</span>
-                    <span className="font-bold text-3xl font-mono text-foreground">{cart.currency} {cart.total.toFixed(2)}</span>
+                <div className="pt-6 border-t border-border mb-8">
+                  <div className="flex justify-between items-end">
+                    <span className="font-bold text-lg text-foreground">Total</span>
+                    <span className="font-bold text-4xl font-mono text-foreground tracking-tight">{cart.currency} {cart.total.toFixed(2)}</span>
                   </div>
+                  <div className="text-right text-xs text-muted-foreground mt-1">USD, taxes included where applicable</div>
                 </div>
 
-                <Button className="w-full h-12 text-lg font-bold mb-4">
-                  <CreditCard className="mr-2 w-5 h-5" />
-                  Proceed to Payment
+                <Button className="w-full h-14 text-lg font-bold mb-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+                  Checkout Now
                 </Button>
 
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-medium">
+                <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground mt-6">
                   <ShieldCheck className="w-4 h-4 text-primary" />
-                  Guaranteed Safe & Secure Checkout
+                  Safe & Secure Checkout
                 </div>
               </motion.div>
             </div>

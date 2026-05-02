@@ -1,8 +1,5 @@
 import { Link } from "wouter";
-import { Star, Monitor, Apple, MonitorSmartphone, ShoppingCart } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Star, Monitor, Apple, MonitorSmartphone } from "lucide-react";
 import { Product } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
 
@@ -15,11 +12,11 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const PlatformIcon = () => {
     switch (product.platform) {
       case "windows":
-        return <Monitor className="w-3 h-3" />;
+        return <Monitor className="w-3.5 h-3.5" />;
       case "macos":
-        return <Apple className="w-3 h-3" />;
+        return <Apple className="w-3.5 h-3.5" />;
       case "cross-platform":
-        return <MonitorSmartphone className="w-3 h-3" />;
+        return <MonitorSmartphone className="w-3.5 h-3.5" />;
       default:
         return null;
     }
@@ -33,62 +30,64 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       className="group h-full"
     >
       <Link href={`/products/${product.id}`} className="block h-full">
-        <Card className="h-full flex flex-col overflow-hidden bg-card border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_-10px_hsl(var(--primary)/0.3)]">
-          <div className="aspect-[4/3] bg-muted/30 relative overflow-hidden flex items-center justify-center p-6">
+        <div className="h-full flex flex-col bg-white rounded-xl border border-border overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-primary/20 hover:-translate-y-1">
+          <div className="aspect-[4/3] bg-muted/20 relative overflow-hidden flex items-center justify-center p-8 group-hover:bg-muted/30 transition-colors">
             {product.imageUrl ? (
               <img 
                 src={product.imageUrl} 
                 alt={product.name} 
-                className="w-full h-full object-contain drop-shadow-2xl group-hover:scale-105 transition-transform duration-500" 
+                className="w-full h-full object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-500 mix-blend-multiply" 
               />
             ) : (
-              <div className="w-24 h-24 bg-primary/10 rounded-xl flex items-center justify-center text-primary font-bold text-2xl">
+              <div className="w-24 h-24 bg-primary/5 rounded-2xl flex items-center justify-center text-primary font-bold text-3xl shadow-sm border border-primary/10">
                 {product.name.charAt(0)}
               </div>
             )}
             
             <div className="absolute top-3 left-3 flex flex-col gap-2">
-              <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm border-border/50 font-mono text-[10px] uppercase tracking-wider text-muted-foreground flex gap-1.5 items-center py-1">
+              <div className="bg-white border border-border/60 rounded px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex gap-1.5 items-center shadow-sm">
                 <PlatformIcon />
                 {product.platform}
-              </Badge>
+              </div>
             </div>
 
             {product.originalPrice && product.originalPrice > product.price && (
-              <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground font-mono font-bold">
+              <div className="absolute top-3 right-3 bg-green-500 text-white rounded px-2 py-1 text-xs font-bold shadow-sm">
                 -{Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}%
-              </Badge>
+              </div>
             )}
           </div>
 
-          <CardContent className="flex-1 p-5 flex flex-col">
-            <div className="text-xs font-mono text-primary mb-2 uppercase tracking-wider">{product.publisher}</div>
-            <h3 className="font-semibold text-lg leading-tight mb-2 group-hover:text-primary transition-colors line-clamp-2">
+          <div className="flex-1 p-5 flex flex-col">
+            <div className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">{product.publisher}</div>
+            <h3 className="font-semibold text-base leading-snug mb-3 text-foreground group-hover:text-primary transition-colors line-clamp-2">
               {product.name}
             </h3>
             
-            <div className="flex items-center gap-1.5 mt-auto pt-4">
-              <Star className="w-4 h-4 fill-primary text-primary" />
-              <span className="text-sm font-medium">{product.rating.toFixed(1)}</span>
+            <div className="flex items-center gap-1 mt-auto">
+              <div className="flex text-amber-400">
+                <Star className="w-4 h-4 fill-current" />
+              </div>
+              <span className="text-sm font-semibold text-foreground ml-1">{product.rating.toFixed(1)}</span>
               <span className="text-xs text-muted-foreground ml-1">({product.reviewCount})</span>
             </div>
-          </CardContent>
+          </div>
 
-          <CardFooter className="p-5 pt-0 border-t border-border/30 mt-auto flex items-center justify-between">
+          <div className="px-5 pb-5 pt-0 mt-auto flex items-end justify-between">
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground font-mono line-through">
+              <span className="text-xs text-muted-foreground font-mono line-through mb-0.5">
                 {product.originalPrice ? `${product.currency} ${product.originalPrice.toFixed(2)}` : ''}
               </span>
-              <span className="text-xl font-bold font-mono text-foreground">
+              <span className="text-xl font-bold font-mono text-primary">
                 {product.currency} {product.price.toFixed(2)}
               </span>
             </div>
             
-            <Button size="icon" variant="secondary" className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-colors">
-              <ShoppingCart className="w-4 h-4" />
-            </Button>
-          </CardFooter>
-        </Card>
+            <div className="text-sm font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-2 group-hover:translate-x-0 duration-300">
+              View Details →
+            </div>
+          </div>
+        </div>
       </Link>
     </motion.div>
   );
