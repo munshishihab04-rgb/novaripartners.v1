@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Star, Monitor, Apple, MonitorSmartphone } from "lucide-react";
 import { Product } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
+import { useCurrency } from "@/lib/currency";
 
 interface ProductCardProps {
   product: Product;
@@ -9,6 +10,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, index = 0 }: ProductCardProps) {
+  const { format } = useCurrency();
   const PlatformIcon = () => {
     switch (product.platform) {
       case "windows":
@@ -76,10 +78,10 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
           <div className="px-5 pb-5 pt-0 mt-auto flex items-end justify-between">
             <div className="flex flex-col">
               <span className="text-xs text-muted-foreground font-mono line-through mb-0.5">
-                {product.originalPrice ? `${product.currency} ${product.originalPrice.toFixed(2)}` : ''}
+                {product.originalPrice ? format(product.originalPrice) : ""}
               </span>
               <span className="text-xl font-bold font-mono text-primary">
-                {product.currency} {product.price.toFixed(2)}
+                {format(product.price)}
               </span>
             </div>
             

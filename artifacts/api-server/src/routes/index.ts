@@ -4,6 +4,7 @@ import productsRouter from "./products";
 import checkoutRouter from "./checkout";
 import adminRouter from "./admin";
 import analyticsRouter from "./analytics";
+import configRouter from "./config";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(productsRouter);
 router.use(checkoutRouter);
 router.use(adminRouter);
 router.use(analyticsRouter);
+router.use(configRouter);
 
 export default router;

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { useCurrency } from "@/lib/currency";
 import { ShoppingCart, Lock, ShieldCheck, Zap, ArrowLeft, X, AlertTriangle, ExternalLink } from "lucide-react";
 
 type OverlayState = "idle" | "loading" | "open" | "blocked" | "error";
@@ -16,6 +17,8 @@ export function Checkout() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
+
+  const { currency, format } = useCurrency();
 
   const [overlayState, setOverlayState] = useState<OverlayState>("idle");
   const [hostedPage, setHostedPage] = useState("");
@@ -48,7 +51,7 @@ export function Checkout() {
       const res = await fetch("/api/checkout/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-session-id": sessionId },
-        body: JSON.stringify({ customerName: form.name.trim(), customerEmail: form.email.trim() }),
+        body: JSON.stringify({ customerName: form.name.trim(), customerEmail: form.email.trim(), currency }),
       });
 
       const data = await res.json();
@@ -164,7 +167,7 @@ export function Checkout() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm font-mono font-bold text-slate-700">EUR {totalEur}</span>
+              <span className="text-sm font-mono font-bold text-slate-700">{format(cart!.total)}</span>
               <button
                 onClick={handleCloseOverlay}
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
@@ -303,7 +306,7 @@ export function Checkout() {
                     ) : (
                       <>
                         <Lock className="mr-2 w-4 h-4" />
-                        Pay EUR {totalEur} — Proceed to Nexi XPay
+                        Pay {format(cart!.total)} — Proceed to Nexi XPay
                       </>
                     )}
                   </Button>
@@ -336,14 +339,14 @@ export function Checkout() {
                         <p className="text-xs text-muted-foreground">Digital License Key</p>
                       </div>
                     </div>
-                    <span className="text-sm font-mono font-semibold shrink-0">EUR {item.price.toFixed(2)}</span>
+                    <span className="text-sm font-mono font-semibold shrink-0">{format(item.price)}</span>
                   </li>
                 ))}
               </ul>
               <div className="border-t border-border pt-3 space-y-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Subtotal</span>
-                  <span className="font-mono">EUR {totalEur}</span>
+                  <span className="font-mono">{format(cart!.total)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Delivery</span>
@@ -351,7 +354,7 @@ export function Checkout() {
                 </div>
                 <div className="flex justify-between font-bold text-foreground pt-1">
                   <span>Total</span>
-                  <span className="font-mono text-lg">EUR {totalEur}</span>
+                  <span className="font-mono text-lg">{format(cart!.total)}</span>
                 </div>
               </div>
             </div>

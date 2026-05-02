@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { ShoppingCart, Package, Search, Menu, ShieldCheck, Mail, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGetCart } from "@workspace/api-client-react";
+import { CurrencySwitcher } from "@/components/currency-switcher";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { data: cart } = useGetCart();
@@ -39,7 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center relative group">
               <Search className="w-4 h-4 absolute left-3 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <input
@@ -47,6 +48,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 placeholder="Search software..."
                 className="h-10 w-[200px] lg:w-[300px] rounded-full border border-input bg-muted/50 px-10 py-2 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-background shadow-sm"
               />
+            </div>
+            <div className="hidden md:block">
+              <CurrencySwitcher />
             </div>
             <Link href="/cart">
               <Button variant="outline" size="icon" className="relative rounded-full bg-card hover:bg-muted shadow-sm border-border">

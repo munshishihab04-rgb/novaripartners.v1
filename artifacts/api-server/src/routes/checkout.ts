@@ -13,6 +13,11 @@ const NEXI_BASE =
     ? "https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1"
     : "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp/api/v1";
 
+function getEurUsdRate(): number {
+  const r = parseFloat(process.env.EUR_USD_RATE || "1.09");
+  return isFinite(r) && r > 0 ? r : 1.09;
+}
+
 function getSiteUrl(): string {
   const domains = process.env.REPLIT_DOMAINS?.split(",");
   if (domains?.length) return `https://${domains[0].trim()}`;
@@ -26,10 +31,12 @@ function generateOrderId(): string {
 router.post("/checkout/create-order", async (req, res) => {
   const sessionId =
     (req.headers["x-session-id"] as string) || "default-session";
-  const { customerName, customerEmail } = req.body as {
+  const { customerName, customerEmail, currency = "EUR" } = req.body as {
     customerName?: string;
     customerEmail?: string;
+    currency?: string;
   };
+  const selectedCurrency = currency === "USD" ? "USD" : "EUR";
 
   if (!customerName?.trim() || !customerEmail?.trim()) {
     res.status(400).json({ error: "Customer name and email are required" });
@@ -56,7 +63,11 @@ router.post("/checkout/create-order", async (req, res) => {
     (sum, item) => sum + parseFloat(item.price as string),
     0
   );
-  const amountCents = Math.round(totalEur * 100);
+  const rate = getEurUsdRate();
+  const amountCents =
+    selectedCurrency === "USD"
+      ? Math.round(totalEur * rate * 100)
+      : Math.round(totalEur * 100);
   const orderId = generateOrderId();
   const siteUrl = getSiteUrl();
 
@@ -66,7 +77,7 @@ router.post("/checkout/create-order", async (req, res) => {
     customerName: customerName.trim(),
     customerEmail: customerEmail.trim(),
     amountCents,
-    currency: "EUR",
+    currency: selectedCurrency,
     status: "pending",
   });
 
@@ -75,6 +86,8 @@ router.post("/checkout/create-order", async (req, res) => {
     res.json({
       hostedPage: `${siteUrl}/checkout/result/${orderId}?mock=1`,
       orderId,
+      currency: selectedCurrency,
+      amountCents,
     });
     return;
   }
@@ -95,7 +108,7 @@ router.post("/checkout/create-order", async (req, res) => {
       order: {
         orderId,
         amount: String(amountCents),
-        currency: "EUR",
+        currency: selectedCurrency,
         description,
         customerInfo: {
           cardHolderName: customerName.trim(),
@@ -105,6 +118,7 @@ router.post("/checkout/create-order", async (req, res) => {
       paymentSession: {
         actionType: "PAY",
         amount: String(amountCents),
+        currency: selectedCurrency,
         language: "ita",
         resultUrl: `${siteUrl}/checkout/result/${orderId}`,
         cancelUrl: `${siteUrl}/checkout/cancel`,
@@ -137,7 +151,7 @@ router.post("/checkout/create-order", async (req, res) => {
     .set({ nexiSecurityToken: nexiData.securityToken })
     .where(eq(ordersTable.id, orderId));
 
-  res.json({ hostedPage: nexiData.hostedPage, orderId });
+  res.json({ hostedPage: nexiData.hostedPage, orderId, currency: selectedCurrency, amountCents });
 });
 
 router.get("/checkout/verify/:orderId", async (req, res) => {

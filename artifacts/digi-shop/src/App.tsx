@@ -20,6 +20,7 @@ import { Refunds } from "@/pages/refunds";
 import { Withdrawal } from "@/pages/withdrawal";
 import { CookieBanner } from "@/components/cookie-banner";
 import { trackEvent } from "@/lib/analytics";
+import { CurrencyProvider } from "@/lib/currency";
 import { useEffect } from "react";
 import { AdminLogin } from "@/pages/admin/login";
 import { AdminDashboard } from "@/pages/admin/dashboard";
@@ -76,14 +77,16 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <PageViewTracker />
-          <Router />
-          <CookieBanner />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <CurrencyProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <PageViewTracker />
+            <Router />
+            <CookieBanner />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </CurrencyProvider>
     </QueryClientProvider>
   );
 }

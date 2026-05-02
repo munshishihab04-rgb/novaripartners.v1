@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { useCurrency } from "@/lib/currency";
 
 export function ProductDetail() {
   const params = useParams();
@@ -21,6 +22,7 @@ export function ProductDetail() {
   });
 
   const addToCart = useAddToCart();
+  const { format } = useCurrency();
 
   useEffect(() => {
     if (product?.id) {
@@ -259,11 +261,11 @@ export function ProductDetail() {
                 <div>
                   {product.originalPrice && product.originalPrice > product.price && (
                     <div className="text-sm text-muted-foreground line-through font-mono mb-1">
-                      {product.currency} {product.originalPrice.toFixed(2)}
+                      {format(product.originalPrice)}
                     </div>
                   )}
                   <div className="text-4xl font-bold text-primary font-mono tracking-tight">
-                    {product.currency} {product.price.toFixed(2)}
+                    {format(product.price)}
                   </div>
                 </div>
                 {product.originalPrice && product.originalPrice > product.price && (

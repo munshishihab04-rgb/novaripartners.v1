@@ -6,12 +6,14 @@ import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+import { useCurrency } from "@/lib/currency";
 
 export function Cart() {
   const { data: cart, isLoading } = useGetCart();
   const removeFromCart = useRemoveFromCart();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { format, currency } = useCurrency();
 
   const handleRemove = (itemId: string, productName: string) => {
     removeFromCart.mutate({ itemId }, {
@@ -111,7 +113,7 @@ export function Cart() {
                         </div>
                         
                         <div className="sm:col-span-3 text-left sm:text-right font-mono font-bold text-xl text-foreground">
-                          {cart.currency} {item.price.toFixed(2)}
+                          {format(item.price)}
                         </div>
                         
                         <div className="sm:col-span-1 flex justify-end">
@@ -149,7 +151,7 @@ export function Cart() {
                 <div className="space-y-4 mb-6 text-sm font-medium">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span>
-                    <span className="font-mono text-foreground">{cart.currency} {cart.total.toFixed(2)}</span>
+                    <span className="font-mono text-foreground">{format(cart.total)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Taxes</span>
@@ -164,9 +166,9 @@ export function Cart() {
                 <div className="pt-6 border-t border-border mb-8">
                   <div className="flex justify-between items-end">
                     <span className="font-bold text-lg text-foreground">Total</span>
-                    <span className="font-bold text-4xl font-mono text-foreground tracking-tight">{cart.currency} {cart.total.toFixed(2)}</span>
+                    <span className="font-bold text-4xl font-mono text-foreground tracking-tight">{format(cart.total)}</span>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground mt-1">USD, taxes included where applicable</div>
+                  <div className="text-right text-xs text-muted-foreground mt-1">{currency}, taxes included where applicable</div>
                 </div>
 
                 <Link href="/checkout">
