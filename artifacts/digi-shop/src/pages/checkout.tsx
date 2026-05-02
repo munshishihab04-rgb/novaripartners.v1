@@ -3,6 +3,7 @@ import { useGetCart } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
+import { trackEvent } from "@/lib/analytics";
 import { ShoppingCart, Lock, ShieldCheck, Zap, ArrowLeft } from "lucide-react";
 
 export function Checkout() {
@@ -60,6 +61,7 @@ export function Checkout() {
       }
 
       localStorage.setItem("nexuskeys_pending_order", data.orderId);
+      trackEvent("start_checkout", { metadata: { orderId: data.orderId } });
       window.location.href = data.hostedPage;
     } catch {
       setApiError("Could not connect to the payment gateway. Please try again.");

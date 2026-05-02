@@ -1,7 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, productsTable, categoriesTable } from "@workspace/db";
-import { eq, desc, count, sql, inArray } from "drizzle-orm";
+import { eq, desc, count, sql, inArray, and } from "drizzle-orm";
+import { analyticsEventsTable } from "@workspace/db";
 
 const router = Router();
 
@@ -243,6 +244,79 @@ router.put("/admin/products/:id", adminAuth, async (req, res) => {
 router.get("/admin/categories", adminAuth, async (req, res) => {
   const cats = await db.select().from(categoriesTable).orderBy(categoriesTable.name);
   res.json(cats);
+});
+
+router.get("/admin/analytics", adminAuth, async (req, res) => {
+  // Build last-12-months slots
+  const months: { key: string; label: string; revenue: number; orders: number }[] = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      revenue: 0,
+      orders: 0,
+    });
+  }
+
+  const [revenueRows, funnelRows, sessionRows, topPagesRows, paidRows] = await Promise.all([
+    db.execute(sql`
+      SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month_key,
+             COALESCE(SUM(amount_cents), 0)::bigint as revenue_cents,
+             COUNT(*)::int as order_count
+      FROM orders
+      WHERE status = 'paid' AND created_at >= NOW() - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', created_at)
+    `),
+    db.execute(sql`
+      SELECT event_type, COUNT(DISTINCT session_id)::int as sessions
+      FROM analytics_events
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY event_type
+    `),
+    db.execute(sql`
+      SELECT COUNT(DISTINCT CASE WHEN created_at >= NOW() - INTERVAL '7 days'  THEN session_id END)::int AS sessions_7d,
+             COUNT(DISTINCT session_id)::int AS sessions_30d,
+             COUNT(*)::int AS page_views_30d
+      FROM analytics_events
+      WHERE event_type = 'page_view' AND created_at >= NOW() - INTERVAL '30 days'
+    `),
+    db.execute(sql`
+      SELECT page, COUNT(*)::int as views
+      FROM analytics_events
+      WHERE event_type = 'page_view' AND created_at >= NOW() - INTERVAL '30 days' AND page IS NOT NULL
+      GROUP BY page ORDER BY views DESC LIMIT 8
+    `),
+    db.execute(sql`
+      SELECT COUNT(*)::int as cnt FROM orders
+      WHERE status = 'paid' AND created_at >= NOW() - INTERVAL '30 days'
+    `),
+  ]);
+
+  for (const row of revenueRows.rows) {
+    const m = months.find((m) => m.key === row.month_key);
+    if (m) { m.revenue = Number(row.revenue_cents) / 100; m.orders = Number(row.order_count); }
+  }
+
+  const funnelMap: Record<string, number> = {};
+  for (const row of funnelRows.rows) funnelMap[String(row.event_type)] = Number(row.sessions);
+
+  const sd = sessionRows.rows[0] ?? {};
+
+  res.json({
+    monthlyRevenue: months.map((m) => ({ month: m.label, revenue: m.revenue, orders: m.orders })),
+    funnel: {
+      pageViews: funnelMap["page_view"] ?? 0,
+      productViews: funnelMap["product_view"] ?? 0,
+      checkoutStarted: funnelMap["start_checkout"] ?? 0,
+      paidOrders: Number(paidRows.rows[0]?.cnt ?? 0),
+    },
+    sessions7d: Number(sd.sessions_7d ?? 0),
+    sessions30d: Number(sd.sessions_30d ?? 0),
+    pageViews30d: Number(sd.page_views_30d ?? 0),
+    topPages: topPagesRows.rows.map((r) => ({ page: String(r.page), views: Number(r.views) })),
+  });
 });
 
 export default router;

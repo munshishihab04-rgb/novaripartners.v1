@@ -97,6 +97,20 @@ export interface ImportResult {
   total: number;
 }
 
+export interface AdminAnalytics {
+  monthlyRevenue: Array<{ month: string; revenue: number; orders: number }>;
+  funnel: {
+    pageViews: number;
+    productViews: number;
+    checkoutStarted: number;
+    paidOrders: number;
+  };
+  sessions7d: number;
+  sessions30d: number;
+  pageViews30d: number;
+  topPages: Array<{ page: string; views: number }>;
+}
+
 export const adminApi = {
   verify: (password: string) =>
     fetch("/api/admin/verify", {
@@ -139,6 +153,8 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ products }),
     }),
+
+  getAnalytics: () => adminFetch<AdminAnalytics>("/admin/analytics"),
 
   getCategories: () => adminFetch<AdminCategory[]>("/admin/categories"),
 };

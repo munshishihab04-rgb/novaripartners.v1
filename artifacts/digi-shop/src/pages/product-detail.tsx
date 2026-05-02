@@ -7,6 +7,8 @@ import { Star, ShieldCheck, Zap, Monitor, Apple, MonitorSmartphone, CheckCircle2
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { useEffect } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 export function ProductDetail() {
   const params = useParams();
@@ -19,6 +21,12 @@ export function ProductDetail() {
   });
 
   const addToCart = useAddToCart();
+
+  useEffect(() => {
+    if (product?.id) {
+      trackEvent("product_view", { productId: product.id, metadata: { name: product.name } });
+    }
+  }, [product?.id]);
 
   const handleAddToCart = () => {
     if (!product) return;
