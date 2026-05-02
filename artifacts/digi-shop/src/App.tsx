@@ -7,6 +7,9 @@ import { Home } from "@/pages/home";
 import { Catalog } from "@/pages/catalog";
 import { ProductDetail } from "@/pages/product-detail";
 import { Cart } from "@/pages/cart";
+import { Checkout } from "@/pages/checkout";
+import { CheckoutResult } from "@/pages/checkout-result";
+import { CheckoutCancel } from "@/pages/checkout-cancel";
 import { About } from "@/pages/about";
 import { Contact } from "@/pages/contact";
 import { FAQ } from "@/pages/faq";
@@ -15,6 +18,7 @@ import { Privacy } from "@/pages/privacy";
 import { Cookies } from "@/pages/cookies";
 import { Refunds } from "@/pages/refunds";
 import { Withdrawal } from "@/pages/withdrawal";
+import { CookieBanner } from "@/components/cookie-banner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +36,10 @@ function Router() {
       <Route path="/catalog" component={Catalog} />
       <Route path="/products/:id" component={ProductDetail} />
       <Route path="/cart" component={Cart} />
+      <Route path="/checkout" component={Checkout} />
+      <Route path="/checkout/result/:orderId" component={CheckoutResult} />
+      <Route path="/checkout/result" component={CheckoutResult} />
+      <Route path="/checkout/cancel" component={CheckoutCancel} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
       <Route path="/faq" component={FAQ} />
@@ -51,6 +59,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <CookieBanner />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

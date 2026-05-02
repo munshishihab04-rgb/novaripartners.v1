@@ -169,9 +169,12 @@ export function Cart() {
                   <div className="text-right text-xs text-muted-foreground mt-1">USD, taxes included where applicable</div>
                 </div>
 
-                <Button className="w-full h-14 text-lg font-bold mb-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                  Checkout Now
-                </Button>
+                <Link href="/checkout">
+                  <Button className="w-full h-14 text-lg font-bold mb-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+                    Proceed to Payment
+                    <ArrowRight className="ml-2 w-5 h-5" />
+                  </Button>
+                </Link>
 
                 <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground mt-6">
                   <ShieldCheck className="w-4 h-4 text-primary" />
