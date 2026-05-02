@@ -102,9 +102,14 @@ router.post("/checkout/create-order", async (req, res) => {
           cardHolderEmail: customerEmail.trim(),
         },
       },
-      resultUrl: `${siteUrl}/checkout/result/${orderId}`,
-      cancelUrl: `${siteUrl}/checkout/cancel`,
-      notificationUrl: `${siteUrl}/api/checkout/notify`,
+      paymentSession: {
+        actionType: "PAY",
+        amount: String(amountCents),
+        language: "ita",
+        resultUrl: `${siteUrl}/checkout/result/${orderId}`,
+        cancelUrl: `${siteUrl}/checkout/cancel`,
+        notificationUrl: `${siteUrl}/api/checkout/notify`,
+      },
     }),
   });
 
