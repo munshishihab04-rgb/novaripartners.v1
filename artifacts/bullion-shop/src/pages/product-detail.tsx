@@ -18,9 +18,9 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-24 text-center">
-          <h1 className="text-3xl font-serif text-white mb-4">Product Not Found</h1>
+          <h1 className="text-3xl font-serif text-foreground mb-4">Product Not Found</h1>
           <Link href="/catalog">
-            <Button variant="outline" className="border-white/20 text-white">Return to Catalog</Button>
+            <Button variant="outline">Return to Catalog</Button>
           </Link>
         </div>
       </Layout>
@@ -39,74 +39,79 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
     });
     toast({
       title: "Added to Cart",
-      description: `${qty}x ${product.name} has been added to your vault.`,
+      description: `${qty}x ${product.name} added to your cart.`,
     });
   };
 
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
-        <Link href="/catalog" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-8 text-sm">
+        <Link href="/catalog" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-8 text-sm">
           <ArrowLeft className="w-4 h-4" /> Back to Catalog
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24">
           {/* Image */}
-          <div className="bg-white rounded-lg p-12 aspect-square flex items-center justify-center border border-white/10 relative">
-            <img 
-              src={product.image} 
-              alt={product.name} 
+          <div className="bg-gray-50 rounded-lg p-12 aspect-square flex items-center justify-center border border-border shadow-sm relative">
+            <img
+              src={product.image}
+              alt={product.name}
               className="max-w-full max-h-full object-contain"
             />
+            <div className="absolute top-4 right-4 bg-primary text-white text-sm font-bold px-3 py-1.5 rounded shadow">
+              {product.year}
+            </div>
           </div>
 
           {/* Details */}
           <div className="flex flex-col justify-center">
             <div className="mb-2">
-              <span className="text-xs text-primary font-bold uppercase tracking-wider">{product.metal} • {product.type}</span>
+              <span className="text-xs text-primary font-bold uppercase tracking-wider">{product.metal} • {product.type} • US Mint</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-serif text-white mb-6 leading-tight">{product.name}</h1>
-            
-            <div className="text-3xl font-mono text-white mb-8 pb-8 border-b border-white/10">
+            <h1 className="text-3xl sm:text-4xl font-serif text-foreground mb-6 leading-tight">{product.name}</h1>
+
+            <div className="text-3xl font-mono text-foreground font-bold mb-2">
               ${product.price.toLocaleString('en-US', {minimumFractionDigits: 2})}
-              <div className="text-sm text-gray-500 font-sans font-normal mt-2">Cash/Wire price. Any quantity.</div>
+            </div>
+            <div className="text-sm text-muted-foreground mb-8 pb-8 border-b border-border">
+              Cash / Wire / Check price. Any quantity.
             </div>
 
-            <p className="text-gray-300 text-lg leading-relaxed mb-8">
+            <p className="text-muted-foreground text-base leading-relaxed mb-8">
               {product.description}
             </p>
 
-            <div className="bg-card border border-white/10 rounded-lg p-6 mb-8">
+            <div className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-gray-400">Quantity</span>
-                <div className="flex items-center border border-white/20 rounded bg-background">
-                  <button 
+                <span className="text-muted-foreground text-sm font-medium">Quantity</span>
+                <div className="flex items-center border border-input rounded bg-background">
+                  <button
                     onClick={() => setQty(Math.max(1, qty - 1))}
-                    className="px-4 py-2 text-white hover:bg-white/5 transition-colors"
-                  >-</button>
-                  <input 
-                    type="number" 
+                    className="px-4 py-2 text-foreground hover:bg-muted transition-colors text-lg leading-none"
+                  >−</button>
+                  <input
+                    type="number"
                     value={qty}
                     onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-16 text-center bg-transparent text-white border-x border-white/20 py-2 focus:outline-none"
+                    className="w-16 text-center bg-transparent text-foreground border-x border-input py-2 focus:outline-none"
                     min="1"
                   />
-                  <button 
+                  <button
                     onClick={() => setQty(qty + 1)}
-                    className="px-4 py-2 text-white hover:bg-white/5 transition-colors"
+                    className="px-4 py-2 text-foreground hover:bg-muted transition-colors text-lg leading-none"
                   >+</button>
                 </div>
               </div>
-              <Button 
+              <Button
                 onClick={handleAddToCart}
-                size="lg" 
-                className="w-full bg-primary hover:bg-primary/90 text-black font-bold h-14 text-lg"
+                size="lg"
+                className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-14 text-lg"
               >
-                Add to Vault
+                Add to Cart
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm text-gray-400 mb-8">
+            <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground mb-8">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-primary" />
                 <span>IRS Form 1099-B Compliant</span>
@@ -126,23 +131,34 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
             </div>
 
             <div>
-              <h3 className="text-white font-serif text-xl mb-4 border-b border-white/10 pb-2">Specifications</h3>
-              <dl className="divide-y divide-white/5">
+              <h3 className="text-foreground font-serif text-xl mb-4 border-b border-border pb-2">Specifications</h3>
+              <dl className="divide-y divide-border">
                 <div className="py-3 flex justify-between">
-                  <dt className="text-gray-400">Metal Content</dt>
-                  <dd className="text-white text-right font-medium">{product.weight}</dd>
+                  <dt className="text-muted-foreground">Year</dt>
+                  <dd className="text-foreground text-right font-medium">{product.year}</dd>
                 </div>
                 <div className="py-3 flex justify-between">
-                  <dt className="text-gray-400">Purity</dt>
-                  <dd className="text-white text-right font-medium">{product.purity}</dd>
+                  <dt className="text-muted-foreground">Metal Content</dt>
+                  <dd className="text-foreground text-right font-medium">{product.weight}</dd>
                 </div>
                 <div className="py-3 flex justify-between">
-                  <dt className="text-gray-400">Mint / Brand</dt>
-                  <dd className="text-white text-right font-medium">{product.mint}</dd>
+                  <dt className="text-muted-foreground">Purity</dt>
+                  <dd className="text-foreground text-right font-medium">{product.purity}</dd>
+                </div>
+                <div className="py-3 flex justify-between">
+                  <dt className="text-muted-foreground">Mint</dt>
+                  <dd className="text-foreground text-right font-medium">{product.mint}</dd>
+                </div>
+                <div className="py-3 flex justify-between">
+                  <dt className="text-muted-foreground">Grade</dt>
+                  <dd className="text-foreground text-right font-medium">Brilliant Uncirculated (BU)</dd>
+                </div>
+                <div className="py-3 flex justify-between">
+                  <dt className="text-muted-foreground">Face Value</dt>
+                  <dd className="text-foreground text-right font-medium">$1 USD (legal tender)</dd>
                 </div>
               </dl>
             </div>
-
           </div>
         </div>
       </div>
