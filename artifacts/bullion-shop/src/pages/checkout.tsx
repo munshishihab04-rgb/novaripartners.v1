@@ -147,7 +147,7 @@ export default function Checkout() {
                 <Lock className="w-4 h-4 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-bold text-slate-800">Secure Payment — Nexi XPay</p>
+                <p className="text-sm font-bold text-slate-800">Secure Card Payment</p>
                 <p className="text-xs text-slate-400">SSL encrypted · NOVARI PARTNERS LLC</p>
               </div>
             </div>
@@ -170,7 +170,7 @@ export default function Checkout() {
             {overlayState === "loading" && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                 <div className="w-14 h-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
-                <p className="text-white/80 text-sm font-medium">Connecting to payment gateway…</p>
+                <p className="text-white/80 text-sm font-medium">Preparing your secure checkout…</p>
               </div>
             )}
 
@@ -307,11 +307,11 @@ export default function Checkout() {
                 disabled={submitting}
               >
                 {submitting ? (
-                  "Connecting to Nexi XPay…"
+                  "Connecting to secure payment…"
                 ) : (
                   <>
                     <Lock className="w-4 h-4 mr-2" />
-                    Pay ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} via Nexi XPay
+                    Pay ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} with Card
                   </>
                 )}
               </Button>
