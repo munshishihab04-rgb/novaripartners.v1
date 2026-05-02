@@ -19,6 +19,10 @@ import { Cookies } from "@/pages/cookies";
 import { Refunds } from "@/pages/refunds";
 import { Withdrawal } from "@/pages/withdrawal";
 import { CookieBanner } from "@/components/cookie-banner";
+import { AdminLogin } from "@/pages/admin/login";
+import { AdminDashboard } from "@/pages/admin/dashboard";
+import { AdminOrders } from "@/pages/admin/orders";
+import { AdminProducts } from "@/pages/admin/products";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +36,10 @@ const queryClient = new QueryClient({
 function Router() {
   return (
     <Switch>
+      <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/orders" component={AdminOrders} />
+      <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin" component={AdminDashboard} />
       <Route path="/" component={Home} />
       <Route path="/catalog" component={Catalog} />
       <Route path="/products/:id" component={ProductDetail} />

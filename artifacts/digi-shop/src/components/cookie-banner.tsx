@@ -1,18 +1,22 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { X, Cookie } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function CookieBanner() {
   const [visible, setVisible] = useState(false);
+  const [location] = useLocation();
 
   useEffect(() => {
+    if (location.startsWith("/admin")) return;
     const consent = localStorage.getItem("cookie_consent");
     if (!consent) {
       const timer = setTimeout(() => setVisible(true), 800);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [location]);
+
+  if (location.startsWith("/admin")) return null;
 
   const accept = () => {
     localStorage.setItem("cookie_consent", "accepted");

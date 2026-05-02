@@ -1,0 +1,119 @@
+export function getAdminPassword(): string {
+  return localStorage.getItem("admin_password") || "";
+}
+
+export function clearAdminSession() {
+  localStorage.removeItem("admin_password");
+}
+
+async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const password = getAdminPassword();
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${password}`,
+      ...(options.headers as Record<string, string> || {}),
+    },
+  });
+
+  if (res.status === 401) {
+    clearAdminSession();
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data as T;
+}
+
+export type OrderStatus = "pending" | "paid" | "failed" | "cancelled";
+
+export interface AdminOrder {
+  id: string;
+  sessionId: string;
+  customerName: string;
+  customerEmail: string;
+  amountCents: number;
+  currency: string;
+  status: string;
+  nexiSecurityToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminProduct {
+  id: number;
+  name: string;
+  slug: string;
+  price: string;
+  originalPrice: string | null;
+  currency: string;
+  platform: string;
+  categoryId: number;
+  categoryName: string | null;
+  inStock: boolean;
+  isFeatured: boolean;
+  publisher: string;
+  version: string;
+  imageUrl: string | null;
+  rating: string;
+  reviewCount: number;
+}
+
+export interface AdminProductFull extends AdminProduct {
+  description: string;
+  shortDescription: string;
+  features: string[];
+  deliveryMethod: string;
+}
+
+export interface AdminCategory {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface AdminStats {
+  totalRevenueCents: number;
+  totalRevenueEur: string;
+  orderStats: Record<string, number>;
+  totalOrders: number;
+  inStockCount: number;
+  outOfStockCount: number;
+  totalProducts: number;
+  recentOrders: AdminOrder[];
+}
+
+export const adminApi = {
+  verify: (password: string) =>
+    fetch("/api/admin/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    }),
+
+  getStats: () => adminFetch<AdminStats>("/admin/stats"),
+
+  getOrders: (status?: string) =>
+    adminFetch<AdminOrder[]>(`/admin/orders${status && status !== "all" ? `?status=${status}` : ""}`),
+
+  updateOrderStatus: (id: string, status: string) =>
+    adminFetch<AdminOrder>(`/admin/orders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  getProducts: () => adminFetch<AdminProduct[]>("/admin/products"),
+
+  getProduct: (id: number) => adminFetch<AdminProductFull>(`/admin/products/${id}`),
+
+  updateProduct: (id: number, data: Partial<AdminProductFull> & { features: string[] }) =>
+    adminFetch<AdminProductFull>(`/admin/products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  getCategories: () => adminFetch<AdminCategory[]>("/admin/categories"),
+};
