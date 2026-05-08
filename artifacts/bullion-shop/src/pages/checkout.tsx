@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useRef, useEffect } from "react";
-import { Lock, ShieldCheck, X, AlertTriangle, ExternalLink, Package, ShoppingCart, ArrowLeft } from "lucide-react";
+import { Lock, ShieldCheck, X, AlertTriangle, ExternalLink, Package, ShoppingCart, ArrowLeft, CreditCard } from "lucide-react";
+import { FaCcVisa, FaCcMastercard, FaCcAmex } from "react-icons/fa";
+import { FaGooglePay, FaApplePay } from "react-icons/fa6";
 
 type OverlayState = "idle" | "loading" | "open" | "blocked";
 
@@ -291,6 +293,45 @@ export default function Checkout() {
                       {errors.zip && <p className="text-xs text-destructive">{errors.zip}</p>}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+                <h2 className="text-lg font-serif text-foreground mb-5 pb-3 border-b border-border flex items-center gap-2">
+                  <span>3. Payment Method</span>
+                </h2>
+
+                <div className="flex items-center gap-2 mb-4">
+                  <CreditCard className="w-4 h-4 text-primary shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    Secure payment processed by <span className="font-semibold text-foreground">Nexi XPay</span>. We accept:
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 mb-5">
+                  <div className="flex items-center justify-center h-10 px-3 bg-white border border-border rounded-lg shadow-sm" title="Visa">
+                    <FaCcVisa className="w-9 h-9 text-[#1A1F71]" />
+                  </div>
+                  <div className="flex items-center justify-center h-10 px-3 bg-white border border-border rounded-lg shadow-sm" title="Mastercard">
+                    <FaCcMastercard className="w-9 h-9 text-[#EB001B]" />
+                  </div>
+                  <div className="flex items-center justify-center h-10 px-3 bg-white border border-border rounded-lg shadow-sm" title="American Express">
+                    <FaCcAmex className="w-9 h-9 text-[#2E77BC]" />
+                  </div>
+                  <div className="flex items-center justify-center h-10 px-4 bg-white border border-border rounded-lg shadow-sm gap-1" title="Google Pay">
+                    <FaGooglePay className="w-10 h-10 text-[#5F6368]" />
+                  </div>
+                  <div className="flex items-center justify-center h-10 px-4 bg-white border border-border rounded-lg shadow-sm" title="Apple Pay">
+                    <FaApplePay className="w-10 h-10 text-[#000000]" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                  <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <p className="text-xs text-slate-500">
+                    Your card details are entered securely on Nexi's encrypted page. We never store your payment information.
+                  </p>
                 </div>
               </div>
 
