@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   RefreshCw, Pencil, Search, Package2, Download, Upload,
-  CheckSquare, Square, CheckCircle2, AlertCircle, X,
+  CheckSquare, Square, CheckCircle2, AlertCircle, X, Plus, Trash2,
 } from "lucide-react";
 
 const PLATFORMS = ["windows", "macos", "cross-platform"] as const;
@@ -43,6 +43,16 @@ interface EditFormState {
   rating: string; reviewCount: number;
 }
 
+const BLANK_FORM = (categories: AdminCategory[]): EditFormState => ({
+  name: "", slug: "", shortDescription: "", description: "",
+  publisher: "", version: "1.0", platform: "windows",
+  categoryId: categories[0]?.id ?? 1,
+  price: "0", originalPrice: "", currency: "EUR", imageUrl: "",
+  deliveryMethod: "Email delivery within 24 hours",
+  featuresText: "", inStock: true, isFeatured: false,
+  rating: "5.0", reviewCount: 0,
+});
+
 function buildFormState(p: AdminProductFull, categories: AdminCategory[]): EditFormState {
   return {
     name: p.name, slug: p.slug, shortDescription: p.shortDescription,
@@ -55,6 +65,109 @@ function buildFormState(p: AdminProductFull, categories: AdminCategory[]): EditF
     inStock: p.inStock, isFeatured: p.isFeatured,
     rating: p.rating || "5.0", reviewCount: p.reviewCount || 0,
   };
+}
+
+function ProductForm({ f, setF, categories }: {
+  f: EditFormState;
+  setF: (u: Partial<EditFormState>) => void;
+  categories: AdminCategory[];
+}) {
+  const input = "w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background";
+  const label = "block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide";
+
+  return (
+    <div className="space-y-5 py-2">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className={label}>Product Name *</label>
+          <input className={input} value={f.name} onChange={(e) => setF({ name: e.target.value })} placeholder="e.g. Microsoft Office 2024" />
+        </div>
+        <div>
+          <label className={label}>Slug *</label>
+          <input className={input} value={f.slug} onChange={(e) => setF({ slug: e.target.value })} placeholder="e.g. microsoft-office-2024" />
+        </div>
+        <div>
+          <label className={label}>Publisher</label>
+          <input className={input} value={f.publisher} onChange={(e) => setF({ publisher: e.target.value })} />
+        </div>
+        <div>
+          <label className={label}>Version</label>
+          <input className={input} value={f.version} onChange={(e) => setF({ version: e.target.value })} />
+        </div>
+        <div>
+          <label className={label}>Platform</label>
+          <select className={input} value={f.platform} onChange={(e) => setF({ platform: e.target.value })}>
+            {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label}>Category</label>
+          <select className={input} value={f.categoryId} onChange={(e) => setF({ categoryId: Number(e.target.value) })}>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label}>Price (EUR) *</label>
+          <input type="number" step="0.01" min="0" className={input} value={f.price} onChange={(e) => setF({ price: e.target.value })} />
+        </div>
+        <div>
+          <label className={label}>Original Price (EUR, optional)</label>
+          <input type="number" step="0.01" min="0" className={input} placeholder="Leave empty for no discount" value={f.originalPrice} onChange={(e) => setF({ originalPrice: e.target.value })} />
+        </div>
+      </div>
+
+      <div>
+        <label className={label}>Short Description</label>
+        <textarea rows={2} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-background" value={f.shortDescription} onChange={(e) => setF({ shortDescription: e.target.value })} />
+      </div>
+      <div>
+        <label className={label}>Full Description</label>
+        <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-y bg-background" value={f.description} onChange={(e) => setF({ description: e.target.value })} />
+      </div>
+      <div>
+        <label className={label}>Features (one per line)</label>
+        <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono resize-y bg-background" value={f.featuresText} onChange={(e) => setF({ featuresText: e.target.value })} placeholder={"Lifetime license\nAll future updates included\n..."} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className={label}>Delivery Method</label>
+          <input className={input} value={f.deliveryMethod} onChange={(e) => setF({ deliveryMethod: e.target.value })} />
+        </div>
+        <div>
+          <label className={label}>Image URL</label>
+          <input className={input} value={f.imageUrl} onChange={(e) => setF({ imageUrl: e.target.value })} placeholder="https://..." />
+        </div>
+        <div>
+          <label className={label}>Rating (0–5)</label>
+          <input type="number" step="0.1" min="0" max="5" className={input} value={f.rating} onChange={(e) => setF({ rating: e.target.value })} />
+        </div>
+        <div>
+          <label className={label}>Review Count</label>
+          <input type="number" min="0" className={input} value={f.reviewCount} onChange={(e) => setF({ reviewCount: Number(e.target.value) })} />
+        </div>
+      </div>
+
+      <div className="flex gap-6 pt-1">
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <div className="relative">
+            <input type="checkbox" className="sr-only peer" checked={f.inStock} onChange={(e) => setF({ inStock: e.target.checked })} />
+            <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-colors" />
+            <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
+          </div>
+          <span className="text-sm font-medium text-slate-700">In Stock</span>
+        </label>
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <div className="relative">
+            <input type="checkbox" className="sr-only peer" checked={f.isFeatured} onChange={(e) => setF({ isFeatured: e.target.checked })} />
+            <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-colors" />
+            <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
+          </div>
+          <span className="text-sm font-medium text-slate-700">Featured on Homepage</span>
+        </label>
+      </div>
+    </div>
+  );
 }
 
 export function AdminProducts() {
@@ -71,12 +184,21 @@ export function AdminProducts() {
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
+  // Create modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<EditFormState | null>(null);
+  const [creating, setCreating] = useState(false);
+
   // Edit modal
   const [editingProduct, setEditingProduct] = useState<AdminProductFull | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditFormState | null>(null);
+
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<AdminProduct | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Export/Import
   const [exporting, setExporting] = useState(false);
@@ -111,7 +233,6 @@ export function AdminProducts() {
   // Selection helpers
   const allSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
   const someSelected = filtered.some((p) => selectedIds.has(p.id));
-  const selectedCount = filtered.filter((p) => selectedIds.has(p.id)).size ?? [...selectedIds].filter((id) => filtered.some((p) => p.id === id)).length;
 
   const toggleAll = () => {
     setSelectedIds((prev) => {
@@ -128,6 +249,32 @@ export function AdminProducts() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  // ── CREATE ───────────────────────────────────────────────────
+  const openCreate = () => {
+    setCreateForm(BLANK_FORM(categories));
+    setCreateOpen(true);
+  };
+
+  const handleCreate = async () => {
+    if (!createForm) return;
+    setCreating(true);
+    try {
+      const features = createForm.featuresText.split("\n").map((f) => f.trim()).filter(Boolean);
+      await adminApi.createProduct({
+        ...createForm, features,
+        originalPrice: createForm.originalPrice || null,
+        imageUrl: createForm.imageUrl || null,
+        categoryId: Number(createForm.categoryId),
+        reviewCount: Number(createForm.reviewCount),
+      } as Parameters<typeof adminApi.createProduct>[0]);
+      toast({ title: "Created", description: `${createForm.name} added to catalog.` });
+      setCreateOpen(false);
+      load();
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Create failed", variant: "destructive" });
+    } finally { setCreating(false); }
   };
 
   // ── EXPORT ──────────────────────────────────────────────────
@@ -182,8 +329,8 @@ export function AdminProducts() {
     if (!importRows.length) return;
     setImporting(true);
     try {
-      const products = csvRowsToProducts(importRows);
-      const result = await adminApi.importProducts(products);
+      const prods = csvRowsToProducts(importRows);
+      const result = await adminApi.importProducts(prods);
       setImportResult(result);
       load();
     } catch (e: unknown) {
@@ -237,8 +384,24 @@ export function AdminProducts() {
     } finally { setSaving(false); }
   };
 
+  // ── DELETE ──────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await adminApi.deleteProduct(deleteTarget.id);
+      toast({ title: "Deleted", description: `${deleteTarget.name} removed from catalog.` });
+      setDeleteTarget(null);
+      load();
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Delete failed", variant: "destructive" });
+    } finally { setDeleting(false); }
+  };
+
   const setF = (update: Partial<EditFormState>) => setForm((prev) => prev ? { ...prev, ...update } : prev);
   const f = form;
+  const setCF = (update: Partial<EditFormState>) => setCreateForm((prev) => prev ? { ...prev, ...update } : prev);
+  const cf = createForm;
 
   return (
     <AdminLayout>
@@ -267,9 +430,13 @@ export function AdminProducts() {
               <Upload className="w-4 h-4 mr-1.5" />
               Import CSV
             </Button>
-            <Button size="sm" onClick={handleExport} disabled={exporting || loading}>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting || loading}>
               <Download className={`w-4 h-4 mr-1.5 ${exporting ? "animate-spin" : ""}`} />
               {exporting ? "Exporting…" : exportButtonLabel()}
+            </Button>
+            <Button size="sm" onClick={openCreate} disabled={loading || categories.length === 0}>
+              <Plus className="w-4 h-4 mr-1.5" />
+              New Product
             </Button>
           </div>
         </div>
@@ -319,6 +486,11 @@ export function AdminProducts() {
             <div className="p-16 text-center text-slate-400">
               <Package2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm">No products found.</p>
+              {products.length === 0 && (
+                <Button size="sm" className="mt-4" onClick={openCreate}>
+                  <Plus className="w-4 h-4 mr-1.5" /> Add your first product
+                </Button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -354,9 +526,13 @@ export function AdminProducts() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-slate-100 rounded-md flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                              {product.name.charAt(0)}
-                            </div>
+                            {product.imageUrl ? (
+                              <img src={product.imageUrl} alt={product.name} className="w-9 h-9 rounded-md object-contain bg-slate-50 border border-slate-100 shrink-0" />
+                            ) : (
+                              <div className="w-9 h-9 bg-slate-100 rounded-md flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                                {product.name.charAt(0)}
+                              </div>
+                            )}
                             <div>
                               <p className="font-medium text-slate-800 line-clamp-1">{product.name}</p>
                               <p className="text-xs text-slate-400">{product.publisher} · v{product.version}</p>
@@ -378,9 +554,19 @@ export function AdminProducts() {
                             : <span className="text-xs text-slate-300">—</span>}
                         </td>
                         <td className="px-6 py-3 text-right">
-                          <Button size="sm" variant="outline" onClick={() => openEdit(product)} className="h-8 text-xs">
-                            <Pencil className="w-3 h-3 mr-1.5" />Edit
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button size="sm" variant="outline" onClick={() => openEdit(product)} className="h-8 text-xs">
+                              <Pencil className="w-3 h-3 mr-1.5" />Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setDeleteTarget(product)}
+                              className="h-8 text-xs text-red-500 hover:text-red-600 hover:border-red-300 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -392,6 +578,22 @@ export function AdminProducts() {
         </div>
       </div>
 
+      {/* ── CREATE MODAL ─────────────────────────────────────── */}
+      <Dialog open={createOpen} onOpenChange={(o) => { if (!creating) setCreateOpen(o); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add New Product</DialogTitle>
+          </DialogHeader>
+          {cf && <ProductForm f={cf} setF={setCF} categories={categories} />}
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={creating || !cf?.name || !cf?.slug} className="min-w-28">
+              {creating ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Creating…</> : "Create Product"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── IMPORT MODAL ─────────────────────────────────────── */}
       <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) setImportOpen(o); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -400,7 +602,6 @@ export function AdminProducts() {
           </DialogHeader>
 
           {importResult ? (
-            /* Results view */
             <div className="py-4 space-y-4">
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
@@ -429,26 +630,18 @@ export function AdminProducts() {
               )}
             </div>
           ) : (
-            /* Preview view */
             <div className="py-2 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
                   <p className="text-sm font-semibold text-blue-700">
                     {importRows.length} row{importRows.length !== 1 ? "s" : ""} found in CSV
                   </p>
-                  <p className="text-xs text-blue-500 mt-0.5">
-                    Products will be created or updated (matched by slug)
-                  </p>
+                  <p className="text-xs text-blue-500 mt-0.5">Products will be created or updated (matched by slug)</p>
                 </div>
-                <button
-                  onClick={downloadTemplate}
-                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                >
-                  <Download className="w-3 h-3" />
-                  Download template
+                <button onClick={downloadTemplate} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <Download className="w-3 h-3" />Download template
                 </button>
               </div>
-
               {importRows.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
@@ -481,14 +674,12 @@ export function AdminProducts() {
                   )}
                 </div>
               )}
-
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <p className="text-xs text-amber-700 font-medium mb-1">CSV format notes:</p>
                 <ul className="text-xs text-amber-600 space-y-0.5 list-disc list-inside">
-                  <li>Use pipe <code className="bg-amber-100 px-1 rounded">|</code> to separate multiple features (e.g. <code className="bg-amber-100 px-1 rounded">Feature 1|Feature 2</code>)</li>
-                  <li>Existing products matched by <strong>slug</strong> will be updated; new slugs create new products</li>
-                  <li>Platform must be: <code className="bg-amber-100 px-1 rounded">windows</code>, <code className="bg-amber-100 px-1 rounded">macos</code>, or <code className="bg-amber-100 px-1 rounded">cross-platform</code></li>
-                  <li>inStock and isFeatured: use <code className="bg-amber-100 px-1 rounded">true</code> or <code className="bg-amber-100 px-1 rounded">false</code></li>
+                  <li>Use pipe <code className="bg-amber-100 px-1 rounded">|</code> to separate features</li>
+                  <li>Existing products matched by <strong>slug</strong> will be updated</li>
+                  <li>Platform: <code className="bg-amber-100 px-1 rounded">windows</code>, <code className="bg-amber-100 px-1 rounded">macos</code>, or <code className="bg-amber-100 px-1 rounded">cross-platform</code></li>
                 </ul>
               </div>
             </div>
@@ -501,11 +692,7 @@ export function AdminProducts() {
               <>
                 <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
                 <Button onClick={handleImport} disabled={importing || importRows.length === 0} className="min-w-32">
-                  {importing ? (
-                    <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Importing…</>
-                  ) : (
-                    `Import ${importRows.length} product${importRows.length !== 1 ? "s" : ""}`
-                  )}
+                  {importing ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Importing…</> : `Import ${importRows.length} product${importRows.length !== 1 ? "s" : ""}`}
                 </Button>
               </>
             )}
@@ -519,110 +706,42 @@ export function AdminProducts() {
           <DialogHeader>
             <DialogTitle>Edit Product</DialogTitle>
           </DialogHeader>
-
           {editLoading || !f ? (
             <div className="py-12 text-center text-slate-400">
               <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-3" />
               <p className="text-sm">Loading product data…</p>
             </div>
           ) : (
-            <div className="space-y-5 py-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Product Name</label>
-                  <input className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.name} onChange={(e) => setF({ name: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Slug</label>
-                  <input className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.slug} onChange={(e) => setF({ slug: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Publisher</label>
-                  <input className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.publisher} onChange={(e) => setF({ publisher: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Version</label>
-                  <input className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.version} onChange={(e) => setF({ version: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Platform</label>
-                  <select className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background" value={f.platform} onChange={(e) => setF({ platform: e.target.value })}>
-                    {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Category</label>
-                  <select className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background" value={f.categoryId} onChange={(e) => setF({ categoryId: Number(e.target.value) })}>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Price (EUR)</label>
-                  <input type="number" step="0.01" min="0" className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.price} onChange={(e) => setF({ price: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Original Price (EUR, optional)</label>
-                  <input type="number" step="0.01" min="0" placeholder="Leave empty for no discount" className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.originalPrice} onChange={(e) => setF({ originalPrice: e.target.value })} />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Short Description</label>
-                <textarea rows={2} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" value={f.shortDescription} onChange={(e) => setF({ shortDescription: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Full Description</label>
-                <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-y" value={f.description} onChange={(e) => setF({ description: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Features (one per line)</label>
-                <textarea rows={4} className="w-full px-3 py-2 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono resize-y" value={f.featuresText} onChange={(e) => setF({ featuresText: e.target.value })} placeholder={"Lifetime license\nAll future updates included\n..."} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Delivery Method</label>
-                  <input className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.deliveryMethod} onChange={(e) => setF({ deliveryMethod: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Image URL</label>
-                  <input className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.imageUrl} onChange={(e) => setF({ imageUrl: e.target.value })} placeholder="https://..." />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Rating (0–5)</label>
-                  <input type="number" step="0.1" min="0" max="5" className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.rating} onChange={(e) => setF({ rating: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Review Count</label>
-                  <input type="number" min="0" className="w-full h-10 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" value={f.reviewCount} onChange={(e) => setF({ reviewCount: Number(e.target.value) })} />
-                </div>
-              </div>
-
-              <div className="flex gap-6 pt-1">
-                <label className="flex items-center gap-3 cursor-pointer select-none">
-                  <div className="relative">
-                    <input type="checkbox" className="sr-only peer" checked={f.inStock} onChange={(e) => setF({ inStock: e.target.checked })} />
-                    <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-colors" />
-                    <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700">In Stock</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer select-none">
-                  <div className="relative">
-                    <input type="checkbox" className="sr-only peer" checked={f.isFeatured} onChange={(e) => setF({ isFeatured: e.target.checked })} />
-                    <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-colors" />
-                    <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700">Featured on Homepage</span>
-                </label>
-              </div>
-            </div>
+            <ProductForm f={f} setF={setF} categories={categories} />
           )}
-
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving || editLoading || !f} className="min-w-24">
               {saving ? "Saving…" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── DELETE CONFIRM ───────────────────────────────────── */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!deleting && !o) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Product</DialogTitle>
+          </DialogHeader>
+          <div className="py-3">
+            <p className="text-sm text-slate-600">
+              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-500 hover:bg-red-600 text-white min-w-24"
+            >
+              {deleting ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Deleting…</> : <><Trash2 className="w-4 h-4 mr-2" />Delete</>}
             </Button>
           </DialogFooter>
         </DialogContent>

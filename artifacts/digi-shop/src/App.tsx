@@ -26,6 +26,7 @@ import { AdminLogin } from "@/pages/admin/login";
 import { AdminDashboard } from "@/pages/admin/dashboard";
 import { AdminOrders } from "@/pages/admin/orders";
 import { AdminProducts } from "@/pages/admin/products";
+import { AdminVisitors } from "@/pages/admin/visitors";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +53,7 @@ function Router() {
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin/visitors" component={AdminVisitors} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/" component={Home} />
       <Route path="/catalog" component={Catalog} />

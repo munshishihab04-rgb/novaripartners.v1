@@ -1,8 +1,9 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, productsTable, categoriesTable } from "@workspace/db";
-import { eq, desc, count, sql, inArray, and } from "drizzle-orm";
+import { eq, desc, count, sql, inArray } from "drizzle-orm";
 import { analyticsEventsTable } from "@workspace/db";
+import { getActiveVisitors, getRecentEvents } from "../visitor-store";
 
 const router = Router();
 
@@ -241,13 +242,80 @@ router.put("/admin/products/:id", adminAuth, async (req, res) => {
   res.json(updated);
 });
 
+router.post("/admin/products", adminAuth, async (req, res) => {
+  const body = req.body as {
+    name: string; slug: string; description: string; shortDescription: string;
+    price: string | number; originalPrice?: string | number | null;
+    currency?: string; publisher: string; version: string;
+    platform: "windows" | "macos" | "cross-platform"; categoryId: number;
+    features: string[]; deliveryMethod: string; inStock: boolean;
+    isFeatured: boolean; imageUrl?: string | null;
+    rating?: string | number; reviewCount?: number;
+  };
+  const [created] = await db.insert(productsTable).values({
+    name: body.name, slug: body.slug,
+    description: body.description || "", shortDescription: body.shortDescription || "",
+    price: String(body.price),
+    originalPrice: body.originalPrice ? String(body.originalPrice) : null,
+    currency: body.currency || "EUR",
+    publisher: body.publisher || "", version: body.version || "1.0",
+    platform: body.platform || "windows",
+    categoryId: Number(body.categoryId),
+    features: body.features || [],
+    deliveryMethod: body.deliveryMethod || "Email delivery within 24 hours",
+    inStock: Boolean(body.inStock),
+    isFeatured: Boolean(body.isFeatured),
+    imageUrl: body.imageUrl || null,
+    rating: body.rating ? String(body.rating) : "5.0",
+    reviewCount: body.reviewCount || 0,
+  }).returning();
+  res.status(201).json(created);
+});
+
+router.delete("/admin/products/:id", adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  await db.delete(productsTable).where(eq(productsTable.id, id));
+  res.json({ ok: true });
+});
+
 router.get("/admin/categories", adminAuth, async (req, res) => {
   const cats = await db.select().from(categoriesTable).orderBy(categoriesTable.name);
   res.json(cats);
 });
 
+router.post("/admin/categories", adminAuth, async (req, res) => {
+  const { name, slug, description } = req.body as { name: string; slug: string; description?: string };
+  if (!name || !slug) { res.status(400).json({ error: "name and slug required" }); return; }
+  const [created] = await db.insert(categoriesTable).values({ name, slug, description: description || null }).returning();
+  res.status(201).json(created);
+});
+
+// Real-time visitors (SSE)
+router.get("/admin/visitors/stream", adminAuth, (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const send = () => {
+    const visitors = getActiveVisitors();
+    const events = getRecentEvents(30);
+    res.write(`data: ${JSON.stringify({ visitors, events, ts: Date.now() })}\n\n`);
+  };
+
+  send();
+  const iv = setInterval(send, 3000);
+  req.on("close", () => clearInterval(iv));
+});
+
+router.get("/admin/visitors", adminAuth, (req, res) => {
+  const visitors = getActiveVisitors();
+  const events = getRecentEvents(30);
+  res.json({ visitors, events, ts: Date.now() });
+});
+
 router.get("/admin/analytics", adminAuth, async (req, res) => {
-  // Build last-12-months slots
   const months: { key: string; label: string; revenue: number; orders: number }[] = [];
   const now = new Date();
   for (let i = 11; i >= 0; i--) {

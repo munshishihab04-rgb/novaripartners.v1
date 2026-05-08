@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Package, ShoppingBag, LogOut, ExternalLink, Store } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, LogOut, ExternalLink, Store, Users } from "lucide-react";
 import { clearAdminSession } from "@/lib/admin-api";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag, exact: false },
   { href: "/admin/products", label: "Products", icon: Package, exact: false },
+  { href: "/admin/visitors", label: "Live Visitors", icon: Users, exact: false },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -39,6 +40,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               >
                 <Icon className="w-4 h-4 shrink-0" />
                 {label}
+                {label === "Live Visitors" && (
+                  <span className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                )}
               </Link>
             );
           })}

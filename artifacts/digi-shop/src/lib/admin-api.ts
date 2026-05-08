@@ -111,6 +111,28 @@ export interface AdminAnalytics {
   topPages: Array<{ page: string; views: number }>;
 }
 
+export interface VisitorEvent {
+  type: string;
+  page: string | null;
+  productId: number | null;
+  timestamp: string;
+  sessionId: string;
+}
+
+export interface VisitorSession {
+  sessionId: string;
+  lastSeen: string;
+  currentPage: string | null;
+  pageHistory: Array<{ page: string; timestamp: string }>;
+  events: Array<{ type: string; page: string | null; productId: number | null; timestamp: string }>;
+}
+
+export interface VisitorsData {
+  visitors: VisitorSession[];
+  events: VisitorEvent[];
+  ts: number;
+}
+
 export const adminApi = {
   verify: (password: string) =>
     fetch("/api/admin/verify", {
@@ -134,11 +156,20 @@ export const adminApi = {
 
   getProduct: (id: number) => adminFetch<AdminProductFull>(`/admin/products/${id}`),
 
+  createProduct: (data: Partial<AdminProductFull> & { features: string[] }) =>
+    adminFetch<AdminProductFull>("/admin/products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   updateProduct: (id: number, data: Partial<AdminProductFull> & { features: string[] }) =>
     adminFetch<AdminProductFull>(`/admin/products/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  deleteProduct: (id: number) =>
+    adminFetch<{ ok: boolean }>(`/admin/products/${id}`, { method: "DELETE" }),
 
   exportProducts: (ids?: number[], categoryId?: number) => {
     const params = new URLSearchParams();
@@ -157,4 +188,6 @@ export const adminApi = {
   getAnalytics: () => adminFetch<AdminAnalytics>("/admin/analytics"),
 
   getCategories: () => adminFetch<AdminCategory[]>("/admin/categories"),
+
+  getVisitors: () => adminFetch<VisitorsData>("/admin/visitors"),
 };
