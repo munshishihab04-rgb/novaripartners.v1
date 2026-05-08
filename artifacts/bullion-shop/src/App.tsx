@@ -1,7 +1,8 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
@@ -16,24 +17,52 @@ import Privacy from "@/pages/privacy";
 import Shipping from "@/pages/shipping";
 import Returns from "@/pages/returns";
 
+import { AdminLogin } from "@/pages/admin/login";
+import { AdminDashboard } from "@/pages/admin/dashboard";
+import { AdminOrders } from "@/pages/admin/orders";
+import { AdminProducts } from "@/pages/admin/products";
+import { AdminVisitors } from "@/pages/admin/visitors";
+
+import { trackEvent } from "@/lib/analytics";
+
 const queryClient = new QueryClient();
+
+function AnalyticsTracker() {
+  const [location] = useLocation();
+  useEffect(() => {
+    if (!location.startsWith("/admin")) {
+      trackEvent("page_view", { page: location });
+    }
+  }, [location]);
+  return null;
+}
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/catalog" component={Catalog} />
-      <Route path="/products/:id" component={ProductDetail} />
-      <Route path="/cart" component={Cart} />
-      <Route path="/checkout" component={Checkout} />
-      <Route path="/about" component={About} />
-      <Route path="/order-success" component={OrderSuccess} />
-      <Route path="/terms" component={Terms} />
-      <Route path="/privacy" component={Privacy} />
-      <Route path="/shipping" component={Shipping} />
-      <Route path="/returns" component={Returns} />
-      <Route component={NotFound} />
-    </Switch>
+    <>
+      <AnalyticsTracker />
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/catalog" component={Catalog} />
+        <Route path="/products/:id" component={ProductDetail} />
+        <Route path="/cart" component={Cart} />
+        <Route path="/checkout" component={Checkout} />
+        <Route path="/about" component={About} />
+        <Route path="/order-success" component={OrderSuccess} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/shipping" component={Shipping} />
+        <Route path="/returns" component={Returns} />
+
+        <Route path="/admin/login" component={AdminLogin} />
+        <Route path="/admin/orders" component={AdminOrders} />
+        <Route path="/admin/products" component={AdminProducts} />
+        <Route path="/admin/visitors" component={AdminVisitors} />
+        <Route path="/admin" component={AdminDashboard} />
+
+        <Route component={NotFound} />
+      </Switch>
+    </>
   );
 }
 

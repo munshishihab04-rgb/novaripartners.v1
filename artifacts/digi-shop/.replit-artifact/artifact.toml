@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/"
+previewPath = "/digi-shop/"
 title = "Software License Store"
 version = "1.0.0"
 id = "artifacts/digi-shop"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/" ]
+paths = [ "/digi-shop/" ]
 localPort = 25513
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "25513"
-BASE_PATH = "/"
+BASE_PATH = "/digi-shop/"
