@@ -16,6 +16,19 @@ export default function OrderSuccess() {
 
   const [status, setStatus] = useState<OrderStatus>("loading");
 
+  // ── Iframe break-out ──────────────────────────────────────────────────────
+  // Nexi HPP redirects resultUrl inside the iframe after payment.
+  // Detect this and break out to the top window immediately.
+  useEffect(() => {
+    try {
+      if (window.self !== window.top && window.top) {
+        window.top.location.replace(window.location.href);
+      }
+    } catch {
+      // Cross-origin top: shouldn't happen since resultUrl is same-origin
+    }
+  }, []);
+
   useEffect(() => {
     if (!orderId) {
       setStatus("unknown");
