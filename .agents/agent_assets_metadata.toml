@@ -11,3 +11,9 @@ id = "t6ezm6Pg1mWtZ3A0wZDvX"
 uri = "file://nexi-xpay-integration.zip"
 type = "unspecified"
 title = "Nexi XPay HPP — File di Integrazione"
+
+[[outputs]]
+id = "c8VUR3K9BMGH5Hp_EujLk"
+uri = "file://nexi-xpay-template.zip"
+type = "unspecified"
+title = "Nexi XPay HPP — Template Pronto all'Uso"
