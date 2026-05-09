@@ -45,3 +45,7 @@ channel = "stable-25_05"
 
 [userenv.shared]
 NEXI_ENV = "production"
+
+[userenv.development]
+ADMIN_JWT_SECRET = "cd02900fe7b860407837941ff03c5c989813e5718b8f5e9dad619f83b7fde42d"
+SITE_URL = "https://4505cb05-d89f-4d18-bbed-a41b0ec624f0-00-2tcu63ldrngx6.riker.replit.dev"

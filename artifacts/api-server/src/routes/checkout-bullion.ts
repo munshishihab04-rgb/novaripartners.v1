@@ -55,7 +55,7 @@ router.post("/checkout/create-bullion-order", async (req, res) => {
   if (!NEXI_API_KEY) {
     req.log.warn("NEXI_API_KEY not set — returning mock hostedPage for development");
     res.json({
-      hostedPage: `${siteUrl}/bullion-shop/order-success?orderId=${orderId}&mock=1`,
+      hostedPage: `${siteUrl}/order-success?orderId=${orderId}&mock=1`,
       orderId,
       amountCents,
     });
@@ -90,8 +90,8 @@ router.post("/checkout/create-bullion-order", async (req, res) => {
         amount: String(amountCents),
         currency: "USD",
         language: "eng",
-        resultUrl: `${siteUrl}/bullion-shop/order-success?orderId=${orderId}`,
-        cancelUrl: `${siteUrl}/bullion-shop/cart`,
+        resultUrl: `${siteUrl}/order-success?orderId=${orderId}`,
+        cancelUrl: `${siteUrl}/cart`,
         notificationUrl: `${siteUrl}/api/checkout/notify`,
       },
     }),
