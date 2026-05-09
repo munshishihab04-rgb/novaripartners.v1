@@ -36,6 +36,25 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
   const [qty, setQty] = useState(1);
   const [descExpanded, setDescExpanded] = useState(false);
 
+  // Reviews.io store rating + reviews
+  type Review = { rating: number; comments: string; reviewer?: { first_name?: string; name?: string } };
+  const [storeRating, setStoreRating] = useState<{ avg: string; total: number } | null>(null);
+  const [storeReviews, setStoreReviews] = useState<Review[]>([]);
+
+  useEffect(() => {
+    fetch("https://api.reviews.io/merchant/reviews?store=novaripartners.com&page=1&per_page=6")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: any) => {
+        if (d?.stats?.average_rating && d?.stats?.total_reviews) {
+          setStoreRating({ avg: d.stats.average_rating, total: d.stats.total_reviews });
+        }
+        if (d?.reviews) {
+          setStoreReviews(d.reviews.filter((r: any) => r.comments?.trim() && r.rating >= 4).slice(0, 3));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Quantity discount tiers — loaded from API (flat $ per coin)
   type DiscountTier = { minQty: number; maxQty: number | null; discountAmount: number; label: string };
   const [discountTiers, setDiscountTiers] = useState<DiscountTier[]>([
@@ -272,6 +291,26 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
             {/* Title */}
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif text-foreground mb-4 leading-tight">{product.name}</h1>
 
+            {/* Reviews.io rating pill */}
+            {storeRating && (
+              <a
+                href="https://www.reviews.io/company-reviews/store/novaripartners.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 mb-4 group"
+                aria-label={`${storeRating.avg} stars — ${storeRating.total.toLocaleString()} verified reviews`}
+              >
+                <div className="flex items-center gap-0.5">
+                  {[1,2,3,4,5].map(s => (
+                    <Star key={s} className={`w-4 h-4 ${parseFloat(storeRating.avg) >= s ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`} />
+                  ))}
+                </div>
+                <span className="text-sm font-semibold text-foreground">{storeRating.avg}</span>
+                <span className="text-sm text-muted-foreground">· {storeRating.total.toLocaleString()} verified reviews</span>
+                <span className="text-xs text-primary group-hover:underline font-medium ml-0.5">on Reviews.io →</span>
+              </a>
+            )}
+
             {/* Price block */}
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-5">
               <div className="flex items-end gap-3">
@@ -462,6 +501,86 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
+
+      {/* Customer Reviews — Reviews.io store reviews */}
+      {storeReviews.length > 0 && (
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="mt-12 lg:mt-16 border-t border-border pt-10">
+            <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
+              <div>
+                <h2 className="text-2xl font-serif text-foreground">What Our Customers Say</h2>
+                {storeRating && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <span className="font-semibold text-foreground">{storeRating.avg} / 5</span>
+                    {" "}· {storeRating.total.toLocaleString()} verified reviews
+                  </p>
+                )}
+              </div>
+              <a
+                href="https://www.reviews.io/company-reviews/store/novaripartners.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary hover:underline font-medium whitespace-nowrap"
+              >
+                See all reviews →
+              </a>
+            </div>
+
+            {/* Cards: horizontal scroll mobile, 3-col grid desktop */}
+            <div
+              className="flex gap-4 overflow-x-auto pb-3 lg:overflow-visible lg:grid lg:grid-cols-3 snap-x snap-mandatory lg:snap-none"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
+            >
+              {storeReviews.map((review, i) => (
+                <div
+                  key={i}
+                  className="min-w-[280px] lg:min-w-0 snap-start flex-shrink-0 lg:flex-shrink bg-card border border-border rounded-xl p-5 shadow-sm"
+                >
+                  {/* Stars */}
+                  <div className="flex gap-0.5 mb-3">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} className={`w-4 h-4 ${review.rating >= s ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`} />
+                    ))}
+                  </div>
+                  {/* Comment */}
+                  <p className="text-sm text-foreground leading-relaxed mb-4 line-clamp-4">
+                    “{review.comments}”
+                  </p>
+                  {/* Reviewer */}
+                  <div className="flex items-center gap-2.5 border-t border-border pt-3">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-primary">
+                        {((review.reviewer?.first_name || review.reviewer?.name || "V")[0]).toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">
+                        {review.reviewer?.first_name || review.reviewer?.name || "Verified Buyer"}
+                      </p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3 text-green-500" /> Verified Purchase
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Attribution */}
+            <div className="mt-5 text-center">
+              <a
+                href="https://www.reviews.io/company-reviews/store/novaripartners.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Powered by <span className="font-bold text-foreground">Reviews.io</span>
+                <span>· Independent verified reviews</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky Mobile Bottom Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-2xl p-3 safe-area-inset-bottom">
