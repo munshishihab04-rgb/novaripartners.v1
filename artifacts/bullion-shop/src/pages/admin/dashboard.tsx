@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
-import { adminApi, type AdminStats, type AdminAnalytics, getAdminPassword } from "@/lib/admin-api";
+import { adminApi, type AdminStats, type AdminAnalytics, isAdminAuthenticated } from "@/lib/admin-api";
 import {
   TrendingUp, ShoppingBag, Package, CheckCircle2, Clock, AlertCircle,
   Users, Eye, MousePointerClick, CreditCard,
@@ -64,7 +64,7 @@ export function AdminDashboard() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getAdminPassword()) { navigate("/admin/login"); return; }
+    if (!isAdminAuthenticated()) { navigate("/admin/login"); return; }
     Promise.all([adminApi.getStats(), adminApi.getAnalytics()])
       .then(([s, a]) => { setStats(s); setAnalytics(a); })
       .catch((e: Error) => setError(e.message))

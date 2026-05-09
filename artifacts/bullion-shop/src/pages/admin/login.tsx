@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { adminApi, getAdminPassword } from "@/lib/admin-api";
+import { adminApi, isAdminAuthenticated, setAdminToken } from "@/lib/admin-api";
 import { Lock } from "lucide-react";
 
 export function AdminLogin() {
@@ -11,7 +11,7 @@ export function AdminLogin() {
   const [, navigate] = useLocation();
 
   useEffect(() => {
-    if (getAdminPassword()) navigate("/admin");
+    if (isAdminAuthenticated()) navigate("/admin");
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -21,11 +21,12 @@ export function AdminLogin() {
     setLoading(true);
     try {
       const res = await adminApi.verify(password);
-      if (res.ok) {
-        localStorage.setItem("admin_password", password);
+      const data = await res.json();
+      if (res.ok && data.token) {
+        setAdminToken(data.token);
         navigate("/admin");
       } else {
-        setError("Invalid password. Please try again.");
+        setError(data.error || "Invalid password. Please try again.");
       }
     } catch {
       setError("Connection error. Please try again.");

@@ -4,21 +4,31 @@ import { ordersTable, productsTable, categoriesTable } from "@workspace/db";
 import { eq, desc, count, sql, inArray } from "drizzle-orm";
 import { analyticsEventsTable } from "@workspace/db";
 import { getActiveVisitors, getRecentEvents } from "../visitor-store";
+import jwt from "jsonwebtoken";
+import { adminLoginLimiter } from "../app";
 
 const router = Router();
 
+function getJwtSecret(): string {
+  const s = process.env.ADMIN_JWT_SECRET;
+  if (!s) throw new Error("ADMIN_JWT_SECRET env var not set");
+  return s;
+}
+
 function adminAuth(req: Request, res: Response, next: NextFunction) {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
-    res.status(503).json({ error: "Admin not configured. Set ADMIN_PASSWORD environment variable." });
+  // Support token in Authorization header OR query param (for SSE/EventSource)
+  const auth = req.headers.authorization || (req.query.token ? `Bearer ${req.query.token}` : "");
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing authorization token" });
     return;
   }
-  const auth = req.headers.authorization;
-  if (auth !== `Bearer ${adminPassword}`) {
-    res.status(401).json({ error: "Invalid credentials" });
-    return;
+  const token = auth.slice(7);
+  try {
+    jwt.verify(token, getJwtSecret());
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
   }
-  next();
 }
 
 const fullProductSelect = (withJoin = true) => ({
@@ -44,12 +54,20 @@ const fullProductSelect = (withJoin = true) => ({
   reviewCount: productsTable.reviewCount,
 });
 
-router.post("/admin/verify", (req, res) => {
+router.post("/admin/verify", adminLoginLimiter, (req, res) => {
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminPassword) { res.status(503).json({ error: "Admin not configured" }); return; }
   const { password } = req.body as { password?: string };
-  if (password === adminPassword) { res.json({ success: true }); }
-  else { res.status(401).json({ error: "Invalid password" }); }
+  if (!password || password !== adminPassword) {
+    res.status(401).json({ error: "Invalid password" });
+    return;
+  }
+  try {
+    const token = jwt.sign({ role: "admin" }, getJwtSecret(), { expiresIn: "8h" });
+    res.json({ success: true, token });
+  } catch (e) {
+    res.status(500).json({ error: "Could not generate token" });
+  }
 });
 
 router.get("/admin/stats", adminAuth, async (req, res) => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
-import { adminApi, type AdminOrder, getAdminPassword } from "@/lib/admin-api";
+import { adminApi, type AdminOrder, isAdminAuthenticated } from "@/lib/admin-api";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ export function AdminOrders() {
   };
 
   useEffect(() => {
-    if (!getAdminPassword()) { navigate("/admin/login"); return; }
+    if (!isAdminAuthenticated()) { navigate("/admin/login"); return; }
     load(activeStatus);
   }, [activeStatus]);
 

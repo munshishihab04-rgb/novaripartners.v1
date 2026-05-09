@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { randomBytes, randomUUID } from "crypto";
+import { checkoutLimiter } from "../app";
 
 const router = Router();
 
@@ -11,9 +12,7 @@ const NEXI_BASE =
     : "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp/api/v1";
 
 function getSiteUrl(): string {
-  const domains = process.env.REPLIT_DOMAINS?.split(",");
-  if (domains?.length) return `https://${domains[0].trim()}`;
-  return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  return process.env.SITE_URL || "https://novaripartners.com";
 }
 
 function generateOrderId(): string {
@@ -27,7 +26,7 @@ type CartItem = {
   quantity: number;
 };
 
-router.post("/checkout/create-bullion-order", async (req, res) => {
+router.post("/checkout/create-bullion-order", checkoutLimiter, async (req, res) => {
   const { customerName, customerEmail, items } = req.body as {
     customerName?: string;
     customerEmail?: string;
@@ -90,8 +89,8 @@ router.post("/checkout/create-bullion-order", async (req, res) => {
         amount: String(amountCents),
         currency: "USD",
         language: "eng",
-        resultUrl: `${siteUrl}/bullion-shop/order-success?orderId=${orderId}`,
-        cancelUrl: `${siteUrl}/bullion-shop/cart`,
+        resultUrl: `${siteUrl}/order-success?orderId=${orderId}`,
+        cancelUrl: `${siteUrl}/cart`,
         notificationUrl: `${siteUrl}/api/checkout/notify`,
       },
     }),

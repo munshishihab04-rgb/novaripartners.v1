@@ -1,18 +1,36 @@
-export function getAdminPassword(): string {
-  return localStorage.getItem("admin_password") || "";
+const TOKEN_KEY = "admin_jwt_token";
+
+export function getAdminToken(): string {
+  return sessionStorage.getItem(TOKEN_KEY) || "";
+}
+
+export function setAdminToken(token: string) {
+  sessionStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearAdminSession() {
-  localStorage.removeItem("admin_password");
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
+export function isAdminAuthenticated(): boolean {
+  const token = getAdminToken();
+  if (!token) return false;
+  try {
+    // Decode payload (no verification — just check expiry client-side)
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
 }
 
 async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const password = getAdminPassword();
+  const token = getAdminToken();
   const res = await fetch(`/api${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${password}`,
+      Authorization: `Bearer ${token}`,
       ...(options.headers as Record<string, string> || {}),
     },
   });

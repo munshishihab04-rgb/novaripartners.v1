@@ -7,7 +7,7 @@ import {
   type AdminProductFull,
   type AdminCategory,
   type ImportResult,
-  getAdminPassword,
+  isAdminAuthenticated,
 } from "@/lib/admin-api";
 import {
   parseCSV,
@@ -216,7 +216,7 @@ export function AdminProducts() {
   };
 
   useEffect(() => {
-    if (!getAdminPassword()) { navigate("/admin/login"); return; }
+    if (!isAdminAuthenticated()) { navigate("/admin/login"); return; }
     load();
   }, []);
 

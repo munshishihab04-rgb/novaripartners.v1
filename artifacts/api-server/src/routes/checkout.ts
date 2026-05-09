@@ -19,9 +19,7 @@ function getEurUsdRate(): number {
 }
 
 function getSiteUrl(): string {
-  const domains = process.env.REPLIT_DOMAINS?.split(",");
-  if (domains?.length) return `https://${domains[0].trim()}`;
-  return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  return process.env.SITE_URL || "https://novaripartners.com";
 }
 
 function generateOrderId(): string {
@@ -222,7 +220,51 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
 
 router.post("/checkout/notify", async (req, res) => {
   req.log.info({ body: req.body }, "Nexi payment notification received");
-  res.status(200).json({ received: true });
+
+  try {
+    const { orderId, operationResult, securityToken } = req.body as {
+      orderId?: string;
+      operationResult?: string;
+      securityToken?: string;
+    };
+
+    if (!orderId) {
+      res.status(400).json({ error: "Missing orderId" });
+      return;
+    }
+
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
+    // Verify securityToken matches what Nexi gave us at order creation
+    if (NEXI_API_KEY && order.nexiSecurityToken && securityToken !== order.nexiSecurityToken) {
+      req.log.warn({ orderId }, "Nexi notify: securityToken mismatch — ignoring");
+      res.status(200).json({ received: true }); // return 200 to avoid Nexi retries
+      return;
+    }
+
+    let status = order.status;
+    if (operationResult === "AUTHORIZED" || operationResult === "EXECUTED") {
+      status = "paid";
+    } else if (operationResult === "DECLINED" || operationResult === "FAILED" || operationResult === "VOIDED") {
+      status = "failed";
+    } else if (operationResult === "CANCELLED") {
+      status = "cancelled";
+    }
+
+    if (status !== order.status) {
+      await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(eq(ordersTable.id, orderId));
+      req.log.info({ orderId, operationResult, status }, "Order status updated via webhook");
+    }
+
+    res.status(200).json({ received: true });
+  } catch (e) {
+    req.log.error({ err: e }, "Nexi notify handler error");
+    res.status(200).json({ received: true }); // always 200 to Nexi
+  }
 });
 
 export default router;

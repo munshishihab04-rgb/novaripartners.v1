@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
-import { type VisitorsData, type VisitorSession, getAdminPassword } from "@/lib/admin-api";
+import { type VisitorsData, type VisitorSession, isAdminAuthenticated, getAdminToken } from "@/lib/admin-api";
 import { Users, Eye, MousePointerClick, ShoppingBag, CreditCard, Activity, Clock } from "lucide-react";
 
 const PAGE_LABELS: Record<string, string> = {
@@ -116,11 +116,11 @@ export function AdminVisitors() {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    if (!getAdminPassword()) { navigate("/admin/login"); return; }
+    if (!isAdminAuthenticated()) { navigate("/admin/login"); return; }
 
     const connect = () => {
-      const password = getAdminPassword();
-      const url = `/api/admin/visitors/stream`;
+      const token = getAdminToken();
+      const url = `/api/admin/visitors/stream?token=${encodeURIComponent(token)}`;
       const es = new EventSource(url);
       esRef.current = es;
 
