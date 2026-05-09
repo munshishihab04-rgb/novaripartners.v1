@@ -1,20 +1,174 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout";
 import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, ShieldCheck, Package, Mail } from "lucide-react";
+import { CheckCircle, ShieldCheck, Package, Mail, Clock, XCircle, AlertTriangle } from "lucide-react";
 import { useCart } from "@/hooks/use-cart";
+
+type OrderStatus = "loading" | "paid" | "pending" | "failed" | "cancelled" | "unknown";
 
 export default function OrderSuccess() {
   const { clearCart } = useCart();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const orderId = params.get("orderId") || "";
+  const isMock = params.get("mock") === "1";
+
+  const [status, setStatus] = useState<OrderStatus>("loading");
 
   useEffect(() => {
-    clearCart();
-  }, []);
+    if (!orderId) {
+      setStatus("unknown");
+      return;
+    }
 
+    // Dev mock bypass
+    if (isMock) {
+      clearCart();
+      setStatus("paid");
+      return;
+    }
+
+    // Poll backend for real status — ogni 2s per max 10 volte (20s) come da template Nexi
+    let attempts = 0;
+    const maxAttempts = 10;
+    const pollInterval = 2000;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/checkout/verify/${encodeURIComponent(orderId)}`);
+        if (!res.ok) {
+          setStatus("unknown");
+          return;
+        }
+        const data = await res.json() as { status: string };
+        const s = data.status;
+
+        if (s === "paid") {
+          clearCart();
+          setStatus("paid");
+          return;
+        }
+        if (s === "failed" || s === "cancelled") {
+          setStatus(s);
+          return;
+        }
+
+        // pending / processing — retry
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, pollInterval);
+        } else {
+          setStatus("pending");
+        }
+      } catch {
+        setStatus("unknown");
+      }
+    };
+
+    poll();
+  }, [orderId]);
+
+  if (status === "loading") {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-24 max-w-2xl text-center">
+          <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin mx-auto mb-6" />
+          <h1 className="text-2xl font-serif text-foreground mb-2">Verifying your payment…</h1>
+          <p className="text-muted-foreground">Please wait while we confirm your order with the payment gateway.</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (status === "failed" || status === "cancelled") {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-24 max-w-2xl text-center">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-8">
+            <XCircle className="w-10 h-10 text-red-600" />
+          </div>
+          <h1 className="text-3xl font-serif text-foreground mb-4">Payment {status === "cancelled" ? "Cancelled" : "Failed"}</h1>
+          <p className="text-muted-foreground text-lg mb-8 leading-relaxed">
+            {status === "cancelled"
+              ? "Your payment was cancelled. No charge was made."
+              : "Your payment could not be processed. No charge was made."}
+          </p>
+          {orderId && (
+            <div className="bg-card border border-border rounded-lg p-4 mb-8 inline-block">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Order Reference</p>
+              <p className="font-mono text-foreground font-bold text-lg">{orderId}</p>
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/cart">
+              <Button size="lg" className="bg-primary hover:bg-primary/90 text-white font-bold px-10">
+                Return to Cart
+              </Button>
+            </Link>
+            <Link href="/catalog">
+              <Button size="lg" variant="outline" className="px-10">
+                Continue Shopping
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-24 max-w-2xl text-center">
+          <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-8">
+            <Clock className="w-10 h-10 text-amber-600" />
+          </div>
+          <h1 className="text-3xl font-serif text-foreground mb-4">Payment Processing</h1>
+          <p className="text-muted-foreground text-lg mb-8 leading-relaxed">
+            Your payment is being processed. This usually takes just a moment. You will receive a confirmation email once complete.
+          </p>
+          {orderId && (
+            <div className="bg-card border border-border rounded-lg p-4 mb-8 inline-block">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Order Reference</p>
+              <p className="font-mono text-foreground font-bold text-lg">{orderId}</p>
+            </div>
+          )}
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-8">
+            <p className="text-sm text-muted-foreground">
+              Questions? Contact us at{" "}
+              <a href="mailto:contact@novaripartnersllc.com" className="text-primary hover:underline font-medium">
+                contact@novaripartnersllc.com
+              </a>
+            </p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (status === "unknown") {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-24 max-w-2xl text-center">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-8">
+            <AlertTriangle className="w-10 h-10 text-gray-500" />
+          </div>
+          <h1 className="text-3xl font-serif text-foreground mb-4">Order Not Found</h1>
+          <p className="text-muted-foreground text-lg mb-8">
+            We could not find this order. If you completed a payment, please contact us with your order reference.
+          </p>
+          <Link href="/catalog">
+            <Button size="lg" className="bg-primary hover:bg-primary/90 text-white font-bold px-10">
+              Return to Store
+            </Button>
+          </Link>
+        </div>
+      </Layout>
+    );
+  }
+
+  // ── PAID ──────────────────────────────────────────────────────────────────
   return (
     <Layout>
       <div className="container mx-auto px-4 py-24 max-w-2xl text-center">

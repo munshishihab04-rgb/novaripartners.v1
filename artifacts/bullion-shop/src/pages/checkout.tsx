@@ -5,18 +5,84 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useRef, useEffect } from "react";
-import { Lock, ShieldCheck, X, AlertTriangle, ExternalLink, Package, ShoppingCart, ArrowLeft, CreditCard } from "lucide-react";
+import { Lock, ShieldCheck, X, AlertTriangle, ExternalLink, Package, ShoppingCart, ArrowLeft, CreditCard, UserCircle, Users, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { isLoggedIn, getStoredUser, fetchWithAuth, setUserToken, setStoredUser } from "@/lib/user-auth";
 import { FaCcVisa, FaCcMastercard, FaCcAmex } from "react-icons/fa";
 import { FaGooglePay, FaApplePay } from "react-icons/fa6";
 
 type OverlayState = "idle" | "loading" | "open" | "blocked";
 
 export default function Checkout() {
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, total: cartTotal, clearCart, appliedCoupon, couponDiscount } = useCart();
   const [, setLocation] = useLocation();
 
-  const shipping = subtotal > 500 ? 0 : 25;
-  const total = subtotal + shipping;
+  // Shipping
+  type ShipMethod = { id: number; name: string; description: string | null; estimatedDays: string | null; priceCents: number; type: string; freeThresholdCents: number | null; };
+  const [shippingMethods, setShippingMethods] = useState<ShipMethod[]>([]);
+  const [selectedShippingId, setSelectedShippingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/shipping/estimate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subtotalCents: Math.round(cartTotal * 100) }),
+    })
+      .then(r => r.json())
+      .then((methods: (ShipMethod & { calculatedPriceCents: number })[]) => {
+        setShippingMethods(methods);
+        // Auto-select first (cheapest free if available, else first)
+        if (methods.length > 0 && !selectedShippingId) {
+          const free = methods.find(m => m.calculatedPriceCents === 0);
+          setSelectedShippingId((free ?? methods[0]).id);
+        }
+      })
+      .catch(() => {});
+  }, [cartTotal]);
+
+  const selectedMethod = shippingMethods.find(m => m.id === selectedShippingId);
+  const shippingCents = (selectedMethod as any)?.calculatedPriceCents ?? 0;
+  const total = cartTotal + shippingCents / 100;
+  const totalSavings = items.reduce((acc, item) => { const orig = (item as any).originalPrice ?? item.price; return acc + (orig - item.price) * item.quantity; }, 0);
+
+  // Account mode
+  const [accountMode, setAccountMode] = useState<"choose" | "guest" | "login" | "register" | "loggedin">(
+    isLoggedIn() ? "loggedin" : "choose"
+  );
+  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", firstName: "", lastName: "" });
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [showAuthPass, setShowAuthPass] = useState(false);
+  const [loggedUser, setLoggedUser] = useState<any>(getStoredUser());
+
+  const handleAuthLogin = async () => {
+    setAuthError(""); setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email: authForm.email, password: authForm.password }) });
+      const d = await res.json();
+      if (!res.ok) { setAuthError(d.error || "Login failed"); return; }
+      setUserToken(d.token); setStoredUser(d.user); setLoggedUser(d.user);
+      window.dispatchEvent(new Event("user-auth-changed"));
+      // Pre-fill form
+      setForm(prev => ({ ...prev, firstName: d.user.firstName||"", lastName: d.user.lastName||"", email: d.user.email }));
+      setAccountMode("loggedin");
+    } catch { setAuthError("Network error"); } finally { setAuthLoading(false); }
+  };
+
+  const handleAuthRegister = async () => {
+    setAuthError(""); 
+    if (authForm.password !== authForm.confirmPassword) { setAuthError("Passwords do not match"); return; }
+    if (authForm.password.length < 8) { setAuthError("Password must be at least 8 characters"); return; }
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/register", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email: authForm.email, password: authForm.password, firstName: authForm.firstName, lastName: authForm.lastName }) });
+      const d = await res.json();
+      if (!res.ok) { setAuthError(d.error || "Registration failed"); return; }
+      setUserToken(d.token); setStoredUser(d.user); setLoggedUser(d.user);
+      window.dispatchEvent(new Event("user-auth-changed"));
+      setForm(prev => ({ ...prev, firstName: d.user.firstName||"", lastName: d.user.lastName||"", email: d.user.email }));
+      setAccountMode("loggedin");
+    } catch { setAuthError("Network error"); } finally { setAuthLoading(false); }
+  };
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -61,7 +127,14 @@ export default function Checkout() {
         body: JSON.stringify({
           customerName: `${form.firstName.trim()} ${form.lastName.trim()}`,
           customerEmail: form.email.trim(),
-          items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
+          // Send productId (preferred) or id/slug fallback — NEVER send price
+          items: items.map(i => ({
+            ...(i.productId != null ? { productId: i.productId } : { slug: i.id }),
+            quantity: i.quantity,
+          })),
+          // Coupon validated server-side — client cannot manipulate discount
+          ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
+          shippingMethodId: selectedShippingId,
         }),
       });
 
@@ -90,9 +163,9 @@ export default function Checkout() {
         const doc = iframeRef.current?.contentDocument;
         if (!doc) setOverlayState("blocked");
       } catch {
-        setOverlayState("blocked");
+        // SecurityError = cross-origin = Nexi loaded correctly
       }
-    }, 4000);
+    }, 5000);
     return () => { if (blockedTimer.current) clearTimeout(blockedTimer.current); };
   }, [overlayState, hostedPage]);
 
@@ -102,7 +175,7 @@ export default function Checkout() {
       const doc = iframeRef.current?.contentDocument;
       if (doc && doc.body && doc.body.innerHTML === "") setOverlayState("blocked");
     } catch {
-      // cross-origin = loaded successfully on Nexi domain
+      // cross-origin = loaded fine
     }
   };
 
@@ -157,17 +230,13 @@ export default function Checkout() {
               <span className="text-sm font-mono font-bold text-slate-700">
                 ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </span>
-              <button
-                onClick={handleCloseOverlay}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
-                title="Cancel payment"
-              >
+              <button onClick={handleCloseOverlay} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500">
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Content area */}
+          {/* Content */}
           <div className="flex-1 relative overflow-hidden">
             {overlayState === "loading" && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
@@ -185,6 +254,7 @@ export default function Checkout() {
                 className="w-full h-full border-0"
                 title="Nexi XPay Secure Payment"
                 allow="payment"
+                referrerPolicy="no-referrer"
                 sandbox="allow-scripts allow-forms allow-same-origin allow-top-navigation allow-popups"
               />
             )}
@@ -195,23 +265,15 @@ export default function Checkout() {
                   <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <AlertTriangle className="w-7 h-7 text-amber-500" />
                   </div>
-                  <h2 className="text-lg font-bold text-slate-800 mb-2">External Payment Page</h2>
-                  <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-                    Nexi's payment page needs to open in a new tab for security reasons. Your order has been created — click below to complete your payment.
-                  </p>
+                  <h2 className="text-lg font-bold text-slate-800 mb-2">Continue on Nexi</h2>
+                  <p className="text-sm text-slate-500 mb-6">Click below to complete your payment on Nexi's secure page.</p>
                   <Button className="w-full mb-3 bg-primary hover:bg-primary/90 text-white" onClick={handleFallbackRedirect}>
                     <ExternalLink className="w-4 h-4 mr-2" />
-                    Complete Payment on Nexi
+                    Complete Payment
                   </Button>
-                  <button
-                    onClick={handleCloseOverlay}
-                    className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    Cancel and go back
+                  <button onClick={handleCloseOverlay} className="text-sm text-slate-400 hover:text-slate-600">
+                    Cancel
                   </button>
-                  {orderId && (
-                    <p className="text-xs text-slate-300 mt-4 font-mono">Order: {orderId}</p>
-                  )}
                 </div>
               </div>
             )}
@@ -237,6 +299,108 @@ export default function Checkout() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Form */}
           <div className="lg:col-span-3">
+
+            {/* Account Mode Selector */}
+            {accountMode === "choose" && (
+              <div className="bg-card border border-border rounded-xl p-5 mb-6 shadow-sm">
+                <h2 className="text-base font-semibold text-foreground mb-4">How would you like to checkout?</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setAccountMode("guest")}
+                    className="flex items-center gap-3 p-4 border-2 border-border rounded-xl hover:border-primary/40 hover:bg-primary/5 transition-all text-left group">
+                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                      <Users className="w-5 h-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground text-sm">Guest Checkout</p>
+                      <p className="text-xs text-muted-foreground">No account needed</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
+                  </button>
+                  <button type="button" onClick={() => setAccountMode("login")}
+                    className="flex items-center gap-3 p-4 border-2 border-primary/30 rounded-xl hover:border-primary hover:bg-primary/5 transition-all text-left group bg-primary/5">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <UserCircle className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-primary text-sm">Sign In / Register</p>
+                      <p className="text-xs text-muted-foreground">Track orders & save info</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-primary ml-auto" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Login at checkout */}
+            {(accountMode === "login" || accountMode === "register") && (
+              <div className="bg-card border border-border rounded-xl p-5 mb-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex border border-border rounded-lg overflow-hidden">
+                    {(["login", "register"] as const).map(m => (
+                      <button key={m} type="button" onClick={() => { setAccountMode(m); setAuthError(""); }}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${accountMode === m ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"}`}>
+                        {m === "login" ? "Sign In" : "Create Account"}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => { setAccountMode("guest"); setAuthError(""); }} className="text-xs text-muted-foreground hover:text-foreground">
+                    Continue as Guest
+                  </button>
+                </div>
+                {authError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg mb-3">{authError}</p>}
+                <div className="space-y-3">
+                  {accountMode === "register" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <input placeholder="First Name" value={authForm.firstName} onChange={e => setAuthForm(p=>({...p,firstName:e.target.value}))}
+                        className="h-10 px-3 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      <input placeholder="Last Name" value={authForm.lastName} onChange={e => setAuthForm(p=>({...p,lastName:e.target.value}))}
+                        className="h-10 px-3 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                  )}
+                  <input type="email" placeholder="Email" value={authForm.email} onChange={e => setAuthForm(p=>({...p,email:e.target.value}))}
+                    className="w-full h-10 px-3 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  <div className="relative">
+                    <input type={showAuthPass ? "text" : "password"} placeholder="Password" value={authForm.password} onChange={e => setAuthForm(p=>({...p,password:e.target.value}))}
+                      className="w-full h-10 px-3 pr-10 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    <button type="button" onClick={() => setShowAuthPass(!showAuthPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {showAuthPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {accountMode === "register" && (
+                    <input type="password" placeholder="Confirm Password" value={authForm.confirmPassword} onChange={e => setAuthForm(p=>({...p,confirmPassword:e.target.value}))}
+                      className="w-full h-10 px-3 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  )}
+                  <button type="button" disabled={authLoading}
+                    onClick={accountMode === "login" ? handleAuthLogin : handleAuthRegister}
+                    className="w-full h-10 bg-primary hover:bg-primary/90 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-60">
+                    {authLoading ? "Please wait..." : accountMode === "login" ? "Sign In & Continue" : "Create Account & Continue"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Logged in badge */}
+            {accountMode === "loggedin" && loggedUser && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserCircle className="w-5 h-5 text-green-600" />
+                  <p className="text-sm text-green-700 font-medium">Signed in as <strong>{loggedUser.email}</strong></p>
+                </div>
+                <button type="button" onClick={() => { setAccountMode("guest"); }} className="text-xs text-muted-foreground hover:text-foreground">Continue as guest</button>
+              </div>
+            )}
+
+            {/* Guest badge */}
+            {accountMode === "guest" && (
+              <div className="bg-card border border-border rounded-xl px-4 py-3 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-muted-foreground" />
+                  <p className="text-sm text-foreground font-medium">Continuing as <strong>Guest</strong></p>
+                </div>
+                <button type="button" onClick={() => setAccountMode("choose")} className="text-xs text-primary hover:underline font-medium">Change</button>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6" noValidate>
 
               {/* Contact */}
@@ -341,11 +505,49 @@ export default function Checkout() {
                 </div>
               )}
 
+              {/* Shipping Method Selector */}
+              {shippingMethods.length > 0 && (
+                <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+                  <h2 className="text-lg font-serif text-foreground mb-4 pb-3 border-b border-border">3. Shipping Method</h2>
+                  <div className="space-y-3">
+                    {shippingMethods.map(m => {
+                      const price = (m as any).calculatedPriceCents as number;
+                      return (
+                        <label key={m.id} className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                          selectedShippingId === m.id
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/40'
+                        }`}>
+                          <input
+                            type="radio"
+                            name="shipping"
+                            value={m.id}
+                            checked={selectedShippingId === m.id}
+                            onChange={() => setSelectedShippingId(m.id)}
+                            className="mt-0.5 accent-primary"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="font-medium text-foreground text-sm">{m.name}</span>
+                              <span className="font-mono font-bold text-sm text-primary shrink-0">
+                                {price === 0 ? 'FREE' : `$${(price / 100).toFixed(2)}`}
+                              </span>
+                            </div>
+                            {m.estimatedDays && <p className="text-xs text-muted-foreground mt-0.5">{m.estimatedDays}</p>}
+                            {m.description && <p className="text-xs text-muted-foreground">{m.description}</p>}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <Button
                 type="submit"
                 size="lg"
                 className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-14 text-base"
-                disabled={submitting}
+                disabled={submitting || accountMode === "choose"}
               >
                 {submitting ? (
                   "Connecting to secure payment…"
@@ -388,9 +590,21 @@ export default function Checkout() {
                   <span>Subtotal</span>
                   <span className="font-mono">${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </div>
+                {totalSavings > 0 && (
+                  <div className="flex justify-between text-green-600 text-sm font-medium">
+                    <span>🏷️ Volume discount</span>
+                    <span className="font-mono">-${totalSavings.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                )}
+                {appliedCoupon && couponDiscount > 0 && (
+                  <div className="flex justify-between text-green-600 text-sm font-medium">
+                    <span>🎟️ Coupon {appliedCoupon.code}</span>
+                    <span className="font-mono">-${couponDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Insured Shipping</span>
-                  <span className="font-mono">{shipping === 0 ? <span className="text-green-600 font-medium">FREE</span> : `$${shipping.toFixed(2)}`}</span>
+                  <span>Shipping</span>
+                  <span className="font-mono">{shippingCents === 0 ? <span className="text-green-600 font-medium">FREE</span> : `$${(shippingCents/100).toFixed(2)}`}</span>
                 </div>
                 <div className="flex justify-between font-bold text-foreground pt-1 text-base">
                   <span>Total (USD)</span>
