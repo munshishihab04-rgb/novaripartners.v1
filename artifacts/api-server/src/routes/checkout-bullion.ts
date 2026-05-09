@@ -366,28 +366,7 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
   res.json({ orderId, status, operationResult, amountCents: order.amountCents, shippingAmountCents: order.shippingAmountCents, shippingMethodName: order.shippingMethodName });
 });
 
-// ─── POST /api/checkout/notify (webhook Nexi) ─────────────────────────────────
-
-router.post("/checkout/notify", async (req, res) => {
-  req.log.info({ method: req.method, path: "/checkout/notify" }, "Nexi webhook received");
-
-  const { orderId, operationResult } = req.body as { orderId?: string; operationResult?: string };
-
-  if (orderId && operationResult) {
-    const status = mapOperationResult(operationResult);
-    const nexiPaymentId = (req.body as any).operationId || (req.body as any).paymentId || null;
-    await db.update(ordersTable)
-      .set({ status, ...(nexiPaymentId ? { nexiPaymentId } : {}) })
-      .where(eq(ordersTable.id, orderId)).catch(() => {});
-    req.log.info({ orderId, operationResult, status }, "Nexi webhook processed");
-
-    if (status === "paid") {
-      const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).catch(() => []);
-      if (order) sendOrderConfirmationEmail({ to: order.customerEmail, customerName: order.customerName, orderId, amountCents: order.amountCents });
-    }
-  }
-
-  res.status(200).json({ received: true });
-});
+// NOTE: POST /api/checkout/notify is handled by checkout.ts (registered first in routes/index.ts)
+// That handler uses the correct Nexi XPay HPP S2S format: req.body.operation.orderId
 
 export default router;

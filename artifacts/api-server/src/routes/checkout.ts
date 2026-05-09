@@ -226,12 +226,13 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
   }
 
   const nexiOrder = (await nexiResponse.json()) as {
-    operations?: Array<{ operationResult: string }>;
+    operations?: Array<{ operationResult: string; operationId?: string }>;
   };
 
   const operations = nexiOrder.operations || [];
   const latestOp = operations[operations.length - 1];
   const operationResult = latestOp?.operationResult || "UNKNOWN";
+  const operationId = latestOp?.operationId;
 
   let status = "pending";
   if (operationResult === "AUTHORIZED" || operationResult === "EXECUTED") {
@@ -248,8 +249,18 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
 
   await db
     .update(ordersTable)
-    .set({ status })
+    .set({ status, ...(operationId ? { nexiPaymentId: operationId } : {}), updatedAt: new Date() })
     .where(eq(ordersTable.id, orderId));
+
+  if (status === "paid") {
+    sendOrderConfirmationEmail({
+      to: order.customerEmail,
+      customerName: order.customerName,
+      orderId: order.id,
+      amountCents: order.amountCents,
+      currency: order.currency,
+    });
+  }
 
   res.json({ orderId, status, operationResult });
 });
@@ -259,16 +270,27 @@ router.post("/checkout/notify", async (req, res) => {
   req.log.info({ method: "POST", path: "/checkout/notify" }, "Nexi webhook received");
 
   try {
-    const { orderId, operationResult, securityToken, amount, currency } = req.body as {
-      orderId?: string;
-      operationResult?: string;
-      securityToken?: string;
-      amount?: string;
-      currency?: string;
-    };
+    // Nexi XPay HPP S2S notification format:
+    // { operation: { orderId, operationId, operationResult, operationAmount, operationCurrency, ... }, securityToken }
+    // We also handle legacy flat format for compatibility
+    const body = req.body as Record<string, any>;
+    const op = body.operation ?? {};
+
+    const orderId: string | undefined        = op.orderId        ?? body.orderId;
+    const operationResult: string | undefined = op.operationResult ?? body.operationResult;
+    const securityToken: string | undefined  = body.securityToken ?? op.securityToken;
+    const operationId: string | undefined    = op.operationId    ?? body.operationId;
+    // Amount in Nexi is in cents (string), e.g. "29" = $0.29
+    const amount: string | undefined         = op.operationAmount ?? body.amount;
+    const currency: string | undefined       = op.operationCurrency ?? body.currency;
+
+    req.log.info(
+      { orderId: orderId?.slice(0, 20), operationResult, hasToken: !!securityToken },
+      "Nexi notify: parsed fields"
+    );
 
     if (!orderId) {
-      req.log.warn("Nexi notify: missing orderId");
+      req.log.warn({ bodyKeys: Object.keys(body), opKeys: Object.keys(op) }, "Nexi notify: missing orderId");
       res.status(200).json({ received: true });
       return;
     }
