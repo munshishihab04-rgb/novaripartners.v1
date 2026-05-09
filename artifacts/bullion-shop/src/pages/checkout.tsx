@@ -8,6 +8,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Lock, ShieldCheck, X, AlertTriangle, ExternalLink, Package, ShoppingCart, ArrowLeft, CreditCard, UserCircle, Users, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { isLoggedIn, getStoredUser, fetchWithAuth, setUserToken, setStoredUser } from "@/lib/user-auth";
 import { USAddressFields, type AddressData } from "@/components/us-address-fields";
+import { trackBeginCheckout, trackShippingInfo } from "@/lib/analytics";
 import { US_STATE_CODES, validateZip } from "@/lib/us-address-data";
 import { FaCcVisa, FaCcMastercard, FaCcAmex } from "react-icons/fa";
 import { FaGooglePay, FaApplePay } from "react-icons/fa6";
@@ -195,6 +196,14 @@ export default function Checkout() {
     setErrors({});
     setSubmitting(true);
     setOverlayState("loading");
+
+    // GA4 begin_checkout (deduplicato per sessione)
+    trackBeginCheckout({
+      value: total,
+      currency: "USD",
+      coupon: (appliedCoupon as any)?.code || undefined,
+      items: items.map(i => ({ id: String(i.productId || i.id), name: i.name, price: i.price, quantity: i.quantity })),
+    });
 
     try {
       const res = await fetch("/api/checkout/create-bullion-order", {
@@ -582,7 +591,15 @@ export default function Checkout() {
                             name="shipping"
                             value={m.id}
                             checked={selectedShippingId === m.id}
-                            onChange={() => setSelectedShippingId(m.id)}
+                            onChange={() => {
+                              setSelectedShippingId(m.id);
+                              trackShippingInfo({
+                                value: total,
+                                currency: "USD",
+                                shippingTier: m.name,
+                                items: items.map(i => ({ id: String(i.productId || i.id), name: i.name, price: i.price, quantity: i.quantity })),
+                              });
+                            }}
                             className="mt-0.5 accent-primary"
                           />
                           <div className="flex-1 min-w-0">

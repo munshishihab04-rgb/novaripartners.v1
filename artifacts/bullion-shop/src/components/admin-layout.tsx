@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Package, ShoppingBag, LogOut, ExternalLink, Store, Users, Tag, Ticket, Truck, Image } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, LogOut, ExternalLink, Store, Users, Tag, Ticket, Truck, Image, BarChart2 } from "lucide-react";
 import { clearAdminSession } from "@/lib/admin-api";
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/admin/coupons", label: "Coupon Codes", icon: Ticket, exact: false },
   { href: "/admin/shipping", label: "Shipping", icon: Truck, exact: false },
   { href: "/admin/visitors", label: "Live Visitors", icon: Users, exact: false },
+  { href: "/admin/tracking", label: "Tracking & Analytics", icon: BarChart2, exact: false },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {

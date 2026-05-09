@@ -28,9 +28,14 @@ import AdminShipping from "@/pages/admin/shipping";
 import AdminMedia from "@/pages/admin/media";
 import AccountPage from "@/pages/account/index";
 import AccountAuth from "@/pages/account/auth";
+import AdminTracking from "@/pages/admin/tracking";
 
 import { CartProvider } from "@/hooks/use-cart";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, initConsent, initAnalytics } from "@/lib/analytics";
+import { ConsentBanner } from "@/components/consent-banner";
+
+// Init consent BEFORE any render (Consent Mode v2)
+initConsent();
 
 const queryClient = new QueryClient();
 
@@ -67,6 +72,7 @@ function Router() {
         <Route path="/admin/discounts" component={AdminDiscounts} />
         <Route path="/admin/coupons" component={AdminCoupons} />
         <Route path="/admin/shipping" component={AdminShipping} />
+        <Route path="/admin/tracking" component={AdminTracking} />
         <Route path="/admin/media" component={AdminMedia} />
         <Route path="/admin/visitors" component={AdminVisitors} />
         <Route path="/account/reset-password" component={AccountAuth} />
@@ -81,6 +87,13 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    fetch("/api/tracking-config")
+      .then(r => r.json())
+      .then(cfg => initAnalytics(cfg))
+      .catch(() => {});
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <CartProvider>
@@ -89,6 +102,7 @@ function App() {
             <Router />
           </WouterRouter>
           <Toaster />
+          <ConsentBanner />
         </TooltipProvider>
       </CartProvider>
     </QueryClientProvider>

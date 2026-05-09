@@ -357,7 +357,17 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
           .where(eq(ordersTable.id, orderId)).catch(() => {});
       }
     }
-    res.json({ orderId, status: "paid", amountCents: order.amountCents, shippingAmountCents: order.shippingAmountCents, shippingMethodName: order.shippingMethodName });
+    res.json({
+      orderId, status: "paid",
+      total: order.amountCents / 100,
+      currency: order.currency || "USD",
+      shipping: (order.shippingAmountCents || 0) / 100,
+      tax: 0,
+      couponCode: order.couponCode || null,
+      couponDiscount: (order.couponDiscountCents || 0) / 100,
+      items: (() => { try { const r = order.itemsJson ? JSON.parse(order.itemsJson as string) : []; return r.map((i: any) => ({ productId: String(i.productId||i.id||""), slug: i.slug||"", name: i.name||"", quantity: Number(i.quantity)||1, price: i.priceCents ? i.priceCents/100 : (i.price||0), discount: 0 })); } catch { return []; } })(),
+      amountCents: order.amountCents, shippingAmountCents: order.shippingAmountCents, shippingMethodName: order.shippingMethodName,
+    });
     return;
   }
 
@@ -390,7 +400,36 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
   }
 
   req.log.info({ orderId, operationResult, status }, "Order verified from Nexi");
-  res.json({ orderId, status, operationResult, amountCents: order.amountCents, shippingAmountCents: order.shippingAmountCents, shippingMethodName: order.shippingMethodName });
+
+  // Parse items for tracking (no PII)
+  let trackingItems: Array<{ productId: string; slug: string; name: string; quantity: number; price: number; discount: number; }> = [];
+  try {
+    const raw = order.itemsJson ? JSON.parse(order.itemsJson as string) : [];
+    trackingItems = raw.map((i: any) => ({
+      productId: String(i.productId || i.id || ""),
+      slug: i.slug || "",
+      name: i.name || "",
+      quantity: Number(i.quantity) || 1,
+      price: i.priceCents ? i.priceCents / 100 : (i.price || 0),
+      discount: i.discountCents ? i.discountCents / 100 : 0,
+    }));
+  } catch { /* non-blocking */ }
+
+  res.json({
+    orderId, status, operationResult,
+    // Tracking safe fields (no PII)
+    total: order.amountCents / 100,
+    currency: order.currency || "USD",
+    shipping: (order.shippingAmountCents || 0) / 100,
+    tax: 0,
+    couponCode: order.couponCode || null,
+    couponDiscount: (order.couponDiscountCents || 0) / 100,
+    items: trackingItems,
+    // Legacy fields
+    amountCents: order.amountCents,
+    shippingAmountCents: order.shippingAmountCents,
+    shippingMethodName: order.shippingMethodName,
+  });
 });
 
 // NOTE: POST /api/checkout/notify is handled by checkout.ts (registered first in routes/index.ts)

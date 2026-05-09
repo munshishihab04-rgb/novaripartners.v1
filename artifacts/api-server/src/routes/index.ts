@@ -8,6 +8,7 @@ import analyticsRouter from "./analytics";
 import configRouter from "./config";
 import userAuthRouter from "./user-auth";
 import couponsRouter from "./coupons";
+import trackingRouter from "./tracking";
 import shippingRouter from "./shipping";
 
 const router: IRouter = Router();
@@ -22,5 +23,6 @@ router.use(configRouter);
 router.use(userAuthRouter);
 router.use(couponsRouter);
 router.use(shippingRouter);
+router.use(trackingRouter);
 
 export default router;

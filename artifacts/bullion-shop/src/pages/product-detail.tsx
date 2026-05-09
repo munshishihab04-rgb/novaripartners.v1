@@ -3,6 +3,7 @@ import { useCart } from "@/hooks/use-cart";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { trackViewItem, trackAddToCart } from "@/lib/analytics";
 import {
   ArrowLeft, ShieldCheck, Truck, Scale, Check,
   Award, Star, Info, ChevronDown, ChevronUp, ShoppingCart, Zap
@@ -96,8 +97,15 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
       document.title = `${product.name} | NovariPartners.com`;
       const meta = document.querySelector('meta[name="description"]');
       if (meta) meta.setAttribute('content', product.shortDescription || `Buy ${product.name} — .999 fine silver, BU quality, fully insured shipping. NovariPartners LLC.`);
+      // GA4 view_item — no PII
+      trackViewItem({
+        id: String(product.id),
+        name: product.name,
+        price: Number(product.price),
+        category: product.category || "Silver Coins",
+      });
     }
-  }, [product]);
+  }, [product?.id]);
 
   // JSON-LD Product schema per SEO (description da DB, non mostrata in UI)
   useEffect(() => {
@@ -203,6 +211,7 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
       type: "Coins",
       metal: "Silver",
     });
+    trackAddToCart({ id: String(product.id), name: product.name, price: discountedPrice, quantity: qty, category: "Silver Coins" });
     window.dispatchEvent(new Event("open-cart-drawer"));
   };
 

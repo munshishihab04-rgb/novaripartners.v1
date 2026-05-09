@@ -4,6 +4,7 @@ import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, ShieldCheck, Package, Mail, Clock, XCircle, AlertTriangle } from "lucide-react";
 import { useCart } from "@/hooks/use-cart";
+import { trackPurchase } from "@/lib/analytics";
 
 type OrderStatus = "loading" | "paid" | "pending" | "failed" | "cancelled" | "unknown";
 
@@ -54,12 +55,32 @@ export default function OrderSuccess() {
           setStatus("unknown");
           return;
         }
-        const data = await res.json() as { status: string };
+        const data = await res.json() as {
+          status: string; total?: number; currency?: string; shipping?: number;
+          tax?: number; couponCode?: string | null;
+          items?: Array<{ productId: string; name: string; quantity: number; price: number; discount?: number; }>;
+        };
         const s = data.status;
 
         if (s === "paid") {
           clearCart();
           setStatus("paid");
+          // GA4 + Google Ads purchase (deduplicato via localStorage)
+          trackPurchase({
+            orderId,
+            total: data.total ?? 0,
+            currency: data.currency ?? "USD",
+            shipping: data.shipping ?? 0,
+            tax: data.tax ?? 0,
+            couponCode: data.couponCode ?? null,
+            items: (data.items ?? []).map(i => ({
+              productId: i.productId || "",
+              name: i.name || "",
+              quantity: i.quantity || 1,
+              price: i.price || 0,
+              discount: i.discount || 0,
+            })),
+          });
           return;
         }
         if (s === "failed" || s === "cancelled") {
