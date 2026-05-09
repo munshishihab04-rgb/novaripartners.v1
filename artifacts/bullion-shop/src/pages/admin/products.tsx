@@ -40,6 +40,7 @@ interface EditFormState {
   publisher: string; version: string; platform: string; categoryId: number;
   price: string; originalPrice: string; currency: string; imageUrl: string;
   deliveryMethod: string; featuresText: string; inStock: boolean; isFeatured: boolean;
+  published: boolean; year: string;
   rating: string; reviewCount: number;
 }
 
@@ -50,6 +51,7 @@ const BLANK_FORM = (categories: AdminCategory[]): EditFormState => ({
   price: "0", originalPrice: "", currency: "EUR", imageUrl: "",
   deliveryMethod: "Email delivery within 24 hours",
   featuresText: "", inStock: true, isFeatured: false,
+  published: true, year: "",
   rating: "5.0", reviewCount: 0,
 });
 
@@ -63,6 +65,8 @@ function buildFormState(p: AdminProductFull, categories: AdminCategory[]): EditF
     deliveryMethod: p.deliveryMethod,
     featuresText: (p.features || []).join("\n"),
     inStock: p.inStock, isFeatured: p.isFeatured,
+    published: (p as unknown as { published?: boolean }).published ?? true,
+    year: String((p as unknown as { year?: number | null }).year ?? ""),
     rating: p.rating || "5.0", reviewCount: p.reviewCount || 0,
   };
 }
@@ -131,8 +135,8 @@ function ProductForm({ f, setF, categories }: {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className={label}>Delivery Method</label>
-          <input className={input} value={f.deliveryMethod} onChange={(e) => setF({ deliveryMethod: e.target.value })} />
+          <label className={label}>Year (optional)</label>
+          <input type="number" min="1986" max="2099" className={input} value={f.year} onChange={(e) => setF({ year: e.target.value })} placeholder="e.g. 2025" />
         </div>
         <div>
           <label className={label}>Image URL</label>
@@ -164,6 +168,14 @@ function ProductForm({ f, setF, categories }: {
             <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
           </div>
           <span className="text-sm font-medium text-slate-700">Featured on Homepage</span>
+        </label>
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <div className="relative">
+            <input type="checkbox" className="sr-only peer" checked={f.published} onChange={(e) => setF({ published: e.target.checked })} />
+            <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-green-500 transition-colors" />
+            <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
+          </div>
+          <span className="text-sm font-medium text-slate-700">Published (visible on site)</span>
         </label>
       </div>
     </div>
@@ -268,6 +280,8 @@ export function AdminProducts() {
         imageUrl: createForm.imageUrl || null,
         categoryId: Number(createForm.categoryId),
         reviewCount: Number(createForm.reviewCount),
+        published: createForm.published,
+        year: createForm.year ? Number(createForm.year) : null,
       } as Parameters<typeof adminApi.createProduct>[0]);
       toast({ title: "Created", description: `${createForm.name} added to catalog.` });
       setCreateOpen(false);
@@ -375,6 +389,8 @@ export function AdminProducts() {
         imageUrl: form.imageUrl || null,
         categoryId: Number(form.categoryId),
         reviewCount: Number(form.reviewCount),
+        published: form.published,
+        year: form.year ? Number(form.year) : null,
       } as Parameters<typeof adminApi.updateProduct>[1]);
       toast({ title: "Saved", description: `${form.name} updated.` });
       setEditOpen(false);
@@ -548,6 +564,11 @@ export function AdminProducts() {
                           )}
                         </td>
                         <td className="px-4 py-3"><InStockBadge inStock={product.inStock} /></td>
+                        <td className="px-4 py-3">
+                          {(product as unknown as { published?: boolean }).published !== false
+                            ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Published</span>
+                            : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-semibold">Draft</span>}
+                        </td>
                         <td className="px-4 py-3">
                           {product.isFeatured
                             ? <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Featured</span>

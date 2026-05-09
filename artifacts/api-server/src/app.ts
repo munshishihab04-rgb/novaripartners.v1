@@ -1,12 +1,17 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { rateLimit } from "express-rate-limit";
 import pinoHttp from "pino-http";
+import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { globalLimiter } from "./lib/limiters";
 
 const app: Express = express();
+
+// ── Trust proxy (Nginx → Express) ─────────────────────────────────────────
+// Required for correct IP detection in rate limiters behind Nginx
+app.set("trust proxy", 1);
 
 // ── Security headers (Helmet) ──────────────────────────────────────────────
 app.use(
@@ -27,7 +32,7 @@ app.use(
   })
 );
 
-// ── CORS: solo dal dominio produzione ─────────────────────────────────────
+// ── CORS: solo dal dominio produzione ──────────────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || process.env.SITE_URL || "http://localhost:3000")
   .split(",")
   .map((o) => o.trim());
@@ -38,39 +43,28 @@ app.use(
       if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       cb(new Error(`CORS: origin ${origin} not allowed`));
     },
-    credentials: true,
+    credentials: false,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Session-Id"],
   })
 );
 
 // ── Global rate limiter ────────────────────────────────────────────────────
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many requests. Please try again later." },
-});
 app.use(globalLimiter);
 
-// ── Stricter limiter per checkout ──────────────────────────────────────────
-export const checkoutLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 min
-  max: 10,
-  message: { error: "Too many checkout attempts. Please wait a moment." },
-});
+// ── Body size limit (increased for base64 image uploads ~5MB → ~7MB JSON) ───
+app.use(express.json({ limit: "8mb" }));
+app.use(express.urlencoded({ extended: true, limit: "8mb" }));
 
-// ── Stricter limiter per admin ─────────────────────────────────────────────
-export const adminLoginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: "Too many login attempts. Please try again in 15 minutes." },
-});
-
-// ── Body size limit ────────────────────────────────────────────────────────────────────
-app.use(express.json({ limit: "50kb" }));
-app.use(express.urlencoded({ extended: true, limit: "50kb" }));
+// ── Serve uploaded media files publicly ───────────────────────────────────
+const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads", "media");
+try { require("fs").mkdirSync(uploadsDir, { recursive: true }); } catch {}
+app.use("/uploads/media", express.static(uploadsDir, {
+  maxAge: "30d",
+  immutable: false,
+  index: false,
+  dotfiles: "deny",
+}));
 
 app.use(
   pinoHttp({
@@ -91,8 +85,6 @@ app.use(
     },
   }),
 );
-app.use(cors());
-
 
 app.use("/api", router);
 

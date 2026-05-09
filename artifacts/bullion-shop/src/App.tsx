@@ -22,7 +22,14 @@ import { AdminDashboard } from "@/pages/admin/dashboard";
 import { AdminOrders } from "@/pages/admin/orders";
 import { AdminProducts } from "@/pages/admin/products";
 import { AdminVisitors } from "@/pages/admin/visitors";
+import AdminDiscounts from "@/pages/admin/discounts";
+import AdminCoupons from "@/pages/admin/coupons";
+import AdminShipping from "@/pages/admin/shipping";
+import AdminMedia from "@/pages/admin/media";
+import AccountPage from "@/pages/account/index";
+import AccountAuth from "@/pages/account/auth";
 
+import { CartProvider } from "@/hooks/use-cart";
 import { trackEvent } from "@/lib/analytics";
 
 const queryClient = new QueryClient();
@@ -57,7 +64,14 @@ function Router() {
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/orders" component={AdminOrders} />
         <Route path="/admin/products" component={AdminProducts} />
+        <Route path="/admin/discounts" component={AdminDiscounts} />
+        <Route path="/admin/coupons" component={AdminCoupons} />
+        <Route path="/admin/shipping" component={AdminShipping} />
+        <Route path="/admin/media" component={AdminMedia} />
         <Route path="/admin/visitors" component={AdminVisitors} />
+        <Route path="/account/reset-password" component={AccountAuth} />
+        <Route path="/account/auth" component={AccountAuth} />
+        <Route path="/account" component={AccountPage} />
         <Route path="/admin" component={AdminDashboard} />
 
         <Route component={NotFound} />
@@ -69,12 +83,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <CartProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </CartProvider>
     </QueryClientProvider>
   );
 }

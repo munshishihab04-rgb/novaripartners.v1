@@ -30,6 +30,8 @@ export const productsTable = pgTable("products", {
   deliveryMethod: text("delivery_method").default("Email delivery within 1 minute").notNull(),
   inStock: boolean("in_stock").default(true).notNull(),
   isFeatured: boolean("is_featured").default(false).notNull(),
+  published: boolean("published").default(true).notNull(),
+  year: integer("year"),
   rating: decimal("rating", { precision: 3, scale: 1 }).default("5.0").notNull(),
   reviewCount: integer("review_count").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

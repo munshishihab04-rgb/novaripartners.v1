@@ -4,9 +4,11 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Lock, ShieldCheck, X, AlertTriangle, ExternalLink, Package, ShoppingCart, ArrowLeft, CreditCard, UserCircle, Users, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { isLoggedIn, getStoredUser, fetchWithAuth, setUserToken, setStoredUser } from "@/lib/user-auth";
+import { USAddressFields, type AddressData } from "@/components/us-address-fields";
+import { US_STATE_CODES, validateZip } from "@/lib/us-address-data";
 import { FaCcVisa, FaCcMastercard, FaCcAmex } from "react-icons/fa";
 import { FaGooglePay, FaApplePay } from "react-icons/fa6";
 
@@ -84,10 +86,82 @@ export default function Checkout() {
     } catch { setAuthError("Network error"); } finally { setAuthLoading(false); }
   };
 
-  const [form, setForm] = useState({
+  // ── Draft persistence ───────────────────────────────────────────────────
+  const DRAFT_KEY = "novari_checkout_draft";
+  const DRAFT_TTL = 48 * 3600 * 1000; // 48 hours
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function loadDraft(): Partial<typeof defaultForm> | null {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.v || !parsed?.ts) return null;
+      if (Date.now() - parsed.ts > DRAFT_TTL) { localStorage.removeItem(DRAFT_KEY); return null; }
+      return parsed.data ?? null;
+    } catch { return null; }
+  }
+
+  function saveDraft(data: typeof defaultForm) {
+    try {
+      // Never save payment data
+      const safe = { firstName: data.firstName, lastName: data.lastName, email: data.email,
+        phone: data.phone, address: data.address, address2: data.address2,
+        city: data.city, state: data.state, zip: data.zip, country: data.country };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, ts: Date.now(), data: safe }));
+    } catch { /* storage full or unavailable */ }
+  }
+
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }
+
+  const defaultForm = {
     firstName: "", lastName: "", email: "", phone: "",
-    address: "", city: "", state: "", zip: "",
+    address: "", address2: "", city: "", state: "", zip: "", country: "United States",
+  };
+
+  const [form, setForm] = useState(() => {
+    const draft = loadDraft();
+    if (draft) return { ...defaultForm, ...draft };
+    return defaultForm;
   });
+
+  // Auto-save draft on form changes (debounced 500ms)
+  useEffect(() => {
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    draftSaveTimer.current = setTimeout(() => saveDraft(form), 500);
+    return () => { if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current); };
+  }, [form]);
+
+  // Clear draft when cart is emptied
+  useEffect(() => {
+    if (items.length === 0) clearDraft();
+  }, [items.length]);
+
+  // Pre-fill from account default address if no draft and user is logged in
+  useEffect(() => {
+    if (!isLoggedIn()) return;
+    const draft = loadDraft();
+    if (draft && Object.values(draft).some(v => v)) return; // draft exists, keep it
+    fetchWithAuth("/api/user/addresses")
+      .then(r => r.json())
+      .then((addrs: any[]) => {
+        const def = addrs.find(a => a.is_default) ?? addrs[0];
+        if (!def) return;
+        setForm(prev => ({
+          ...prev,
+          firstName: prev.firstName || def.first_name || "",
+          lastName: prev.lastName || def.last_name || "",
+          address: prev.address || def.street || "",
+          city: prev.city || def.city || "",
+          state: prev.state || def.state || "",
+          zip: prev.zip || def.zip || "",
+          country: "United States",
+        }));
+      })
+      .catch(() => {});
+  }, [isLoggedIn()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
@@ -105,9 +179,11 @@ export default function Checkout() {
     if (!form.email.trim()) errs.email = "Email is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Enter a valid email";
     if (!form.address.trim()) errs.address = "Required";
-    if (!form.city.trim()) errs.city = "Required";
-    if (!form.state.trim()) errs.state = "Required";
-    if (!form.zip.trim()) errs.zip = "Required";
+    if (!form.city.trim()) errs.city = "City is required";
+    if (!form.state.trim()) errs.state = "State is required";
+    else if (!US_STATE_CODES.has(form.state)) errs.state = "Select a valid US state";
+    if (!form.zip.trim()) errs.zip = "ZIP code is required";
+    else if (!validateZip(form.zip)) errs.zip = "Invalid ZIP (e.g. 12345 or 12345-6789)";
     return errs;
   };
 
@@ -147,6 +223,7 @@ export default function Checkout() {
 
       setOrderId(data.orderId);
       setHostedPage(data.hostedPage);
+      clearDraft(); // clean up draft after successful order creation
       setOverlayState("open");
     } catch {
       setApiError("Could not connect to the payment gateway. Please try again.");
@@ -434,30 +511,12 @@ export default function Checkout() {
               <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
                 <h2 className="text-lg font-serif text-foreground mb-5 pb-3 border-b border-border">2. Shipping Address</h2>
                 <p className="text-xs text-primary font-medium mb-4">We cannot ship to PO Boxes. A physical address is required for insured delivery.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="address">Street Address <span className="text-destructive">*</span></Label>
-                    <Input id="address" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className={errors.address ? "border-destructive" : ""} />
-                    {errors.address && <p className="text-xs text-destructive">{errors.address}</p>}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="city">City <span className="text-destructive">*</span></Label>
-                    <Input id="city" value={form.city} onChange={e => setForm({...form, city: e.target.value})} className={errors.city ? "border-destructive" : ""} />
-                    {errors.city && <p className="text-xs text-destructive">{errors.city}</p>}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="state">State <span className="text-destructive">*</span></Label>
-                      <Input id="state" value={form.state} onChange={e => setForm({...form, state: e.target.value})} className={errors.state ? "border-destructive" : ""} placeholder="WY" />
-                      {errors.state && <p className="text-xs text-destructive">{errors.state}</p>}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="zip">ZIP <span className="text-destructive">*</span></Label>
-                      <Input id="zip" value={form.zip} onChange={e => setForm({...form, zip: e.target.value})} className={errors.zip ? "border-destructive" : ""} />
-                      {errors.zip && <p className="text-xs text-destructive">{errors.zip}</p>}
-                    </div>
-                  </div>
-                </div>
+                <USAddressFields
+                  value={{ address: form.address, address2: form.address2, city: form.city, state: form.state, zip: form.zip, country: form.country }}
+                  onChange={(v: AddressData) => setForm(prev => ({ ...prev, ...v }))}
+                  errors={errors}
+                  showAddress2={true}
+                />
               </div>
 
               {/* Payment Method */}

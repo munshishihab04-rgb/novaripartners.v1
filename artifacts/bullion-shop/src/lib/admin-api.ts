@@ -24,7 +24,7 @@ export function isAdminAuthenticated(): boolean {
   }
 }
 
-async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAdminToken();
   const res = await fetch(`/api${path}`, {
     ...options,
@@ -108,8 +108,46 @@ export interface AdminStats {
   recentOrders: AdminOrder[];
 }
 
+export interface AdminOrderDetail {
+  id: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  customerName: string;
+  customerEmail: string;
+  currency: string;
+  subtotalCents: number;
+  couponCode: string | null;
+  couponDiscountCents: number;
+  shippingAmountCents: number;
+  shippingMethodName: string | null;
+  shippingMethodType: string | null;
+  amountCents: number;
+  items: Array<{
+    productId: number;
+    slug: string;
+    name: string;
+    price: string;
+    quantity: number;
+  }>;
+  paymentProvider: string;
+  nexiPaymentId: string | null;
+  nexiTokenPresent: boolean;
+  userId: number | null;
+  userInfo: { email: string; firstName?: string; lastName?: string } | null;
+}
+
+export interface AdminMedia {
+  id: number;
+  filename: string;
+  original_name: string;
+  url: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 export interface ImportResult {
-  created: number;
   updated: number;
   errors: string[];
   total: number;
@@ -208,4 +246,28 @@ export const adminApi = {
   getCategories: () => adminFetch<AdminCategory[]>("/admin/categories"),
 
   getVisitors: () => adminFetch<VisitorsData>("/admin/visitors"),
+
+  getOrderDetail: (orderId: string) => adminFetch<AdminOrderDetail>(`/admin/orders/${orderId}`),
+
+  getMedia: () => adminFetch<AdminMedia[]>("/admin/media"),
+
+  uploadMedia: (file: File) =>
+    new Promise<AdminMedia>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result as string;
+          const dataBase64 = dataUrl.split(",")[1];
+          const result = await adminFetch<AdminMedia>("/admin/media/upload", {
+            method: "POST",
+            body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64 }),
+          });
+          resolve(result);
+        } catch (e) { reject(e); }
+      };
+      reader.onerror = () => reject(new Error("File read error"));
+      reader.readAsDataURL(file);
+    }),
+
+  deleteMedia: (id: number) => adminFetch<{ ok: boolean }>(`/admin/media/${id}`, { method: "DELETE" }),
 };

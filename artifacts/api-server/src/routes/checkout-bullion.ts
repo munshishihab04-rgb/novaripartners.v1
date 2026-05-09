@@ -121,6 +121,10 @@ router.post("/checkout/create-bullion-order", checkoutLimiter, async (req, res) 
     res.status(400).json({ error: "Customer name and email are required" });
     return;
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+    res.status(400).json({ error: "Invalid email address" });
+    return;
+  }
   if (!shippingMethodId || typeof shippingMethodId !== "number") {
     res.status(400).json({ error: "A shipping method is required" });
     return;
@@ -243,6 +247,16 @@ router.post("/checkout/create-bullion-order", checkoutLimiter, async (req, res) 
     shippingMethodId: shippingResult.method.id,
     shippingMethodName: shippingResult.method.name,
     shippingAmountCents,
+    itemsJson: JSON.stringify(resolvedItems.map(({ product, quantity }) => ({
+      productId: product.id,
+      slug: product.slug,
+      name: product.name,
+      price: product.price,
+      quantity,
+    }))),
+    couponCode: validatedCouponCode,
+    couponDiscountCents,
+    subtotalCents,
   });
 
   req.log.info({ orderId, amountCents, currency: CURRENCY, items: resolvedItems.length }, "Bullion order created");
@@ -361,7 +375,10 @@ router.post("/checkout/notify", async (req, res) => {
 
   if (orderId && operationResult) {
     const status = mapOperationResult(operationResult);
-    await db.update(ordersTable).set({ status }).where(eq(ordersTable.id, orderId)).catch(() => {});
+    const nexiPaymentId = (req.body as any).operationId || (req.body as any).paymentId || null;
+    await db.update(ordersTable)
+      .set({ status, ...(nexiPaymentId ? { nexiPaymentId } : {}) })
+      .where(eq(ordersTable.id, orderId)).catch(() => {});
     req.log.info({ orderId, operationResult, status }, "Nexi webhook processed");
 
     if (status === "paid") {

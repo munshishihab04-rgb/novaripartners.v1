@@ -5,7 +5,21 @@ import { eq, desc, count, sql, inArray } from "drizzle-orm";
 import { analyticsEventsTable } from "@workspace/db";
 import { getActiveVisitors, getRecentEvents } from "../visitor-store";
 import jwt from "jsonwebtoken";
-import { adminLoginLimiter } from "../app";
+import { adminLoginLimiter } from "../lib/limiters";
+import fs from "fs";
+import path from "path";
+
+// Raw DB query helper for settings table (not in Drizzle schema)
+async function getSetting(key: string): Promise<unknown> {
+  const res = await db.execute(sql`SELECT value FROM settings WHERE key = ${key}`);
+  return (res.rows[0] as { value?: unknown } | undefined)?.value ?? null;
+}
+async function setSetting(key: string, value: unknown): Promise<void> {
+  await db.execute(
+    sql`INSERT INTO settings (key, value, updated_at) VALUES (${key}, ${JSON.stringify(value)}::jsonb, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(value)}::jsonb, updated_at = NOW()`
+  );
+}
 
 const router = Router();
 
@@ -13,6 +27,10 @@ function getJwtSecret(): string {
   const s = process.env.ADMIN_JWT_SECRET;
   if (!s) throw new Error("ADMIN_JWT_SECRET env var not set");
   return s;
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  return adminAuth(req, res, next);
 }
 
 function adminAuth(req: Request, res: Response, next: NextFunction) {
@@ -26,7 +44,9 @@ function adminAuth(req: Request, res: Response, next: NextFunction) {
   try {
     jwt.verify(token, getJwtSecret());
     next();
-  } catch {
+  } catch (err: unknown) {
+    const reason = err instanceof Error ? err.message : "unknown";
+    req.log.warn({ ip: req.ip, reason }, "Admin auth rejected");
     res.status(401).json({ error: "Invalid or expired token" });
   }
 }
@@ -50,6 +70,8 @@ const fullProductSelect = (withJoin = true) => ({
   features: productsTable.features,
   inStock: productsTable.inStock,
   isFeatured: productsTable.isFeatured,
+  published: productsTable.published,
+  year: productsTable.year,
   rating: productsTable.rating,
   reviewCount: productsTable.reviewCount,
 });
@@ -59,13 +81,16 @@ router.post("/admin/verify", adminLoginLimiter, (req, res) => {
   if (!adminPassword) { res.status(503).json({ error: "Admin not configured" }); return; }
   const { password } = req.body as { password?: string };
   if (!password || password !== adminPassword) {
+    req.log.warn({ ip: req.ip }, "Admin login failed");
     res.status(401).json({ error: "Invalid password" });
     return;
   }
   try {
     const token = jwt.sign({ role: "admin" }, getJwtSecret(), { expiresIn: "8h" });
+    req.log.info({ ip: req.ip }, "Admin login success");
     res.json({ success: true, token });
   } catch (e) {
+    req.log.error({ err: e }, "Failed to sign admin JWT");
     res.status(500).json({ error: "Could not generate token" });
   }
 });
@@ -108,27 +133,34 @@ router.patch("/admin/orders/:id", adminAuth, async (req, res) => {
 });
 
 router.get("/admin/products", adminAuth, async (req, res) => {
-  const products = await db.select({
-    id: productsTable.id,
-    name: productsTable.name,
-    slug: productsTable.slug,
-    price: productsTable.price,
-    originalPrice: productsTable.originalPrice,
-    currency: productsTable.currency,
-    platform: productsTable.platform,
-    categoryId: productsTable.categoryId,
-    categoryName: categoriesTable.name,
-    inStock: productsTable.inStock,
-    isFeatured: productsTable.isFeatured,
-    publisher: productsTable.publisher,
-    version: productsTable.version,
-    imageUrl: productsTable.imageUrl,
-    rating: productsTable.rating,
-    reviewCount: productsTable.reviewCount,
-  }).from(productsTable)
-    .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .orderBy(productsTable.name);
-  res.json(products);
+  try {
+    const products = await db.select({
+      id: productsTable.id,
+      name: productsTable.name,
+      slug: productsTable.slug,
+      price: productsTable.price,
+      originalPrice: productsTable.originalPrice,
+      currency: productsTable.currency,
+      platform: productsTable.platform,
+      categoryId: productsTable.categoryId,
+      categoryName: categoriesTable.name,
+      inStock: productsTable.inStock,
+      isFeatured: productsTable.isFeatured,
+      published: productsTable.published,
+      year: productsTable.year,
+      publisher: productsTable.publisher,
+      version: productsTable.version,
+      imageUrl: productsTable.imageUrl,
+      rating: productsTable.rating,
+      reviewCount: productsTable.reviewCount,
+    }).from(productsTable)
+      .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
+      .orderBy(productsTable.name);
+    res.json(products);
+  } catch (e) {
+    req.log.error({ err: e }, "GET /admin/products error");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // NOTE: must be registered BEFORE /admin/products/:id to avoid "export" being treated as an id
@@ -203,6 +235,8 @@ router.post("/admin/products/import", adminAuth, async (req, res) => {
         deliveryMethod: String(p.deliveryMethod || "Email delivery within 24 hours"),
         inStock: toBool(p.inStock),
         isFeatured: toBool(p.isFeatured),
+        published: p.published !== undefined ? toBool(p.published) : true,
+        year: p.year ? Number(p.year) : null,
         imageUrl: p.imageUrl ? String(p.imageUrl) : null,
         rating: String(p.rating || "5.0"),
         reviewCount: Number(p.reviewCount || 0),
@@ -242,6 +276,7 @@ router.put("/admin/products/:id", adminAuth, async (req, res) => {
     features: string[]; deliveryMethod: string; inStock: boolean;
     isFeatured: boolean; imageUrl?: string | null;
     rating?: string | number; reviewCount?: number;
+    published?: boolean; year?: number | null;
   };
   await db.update(productsTable).set({
     name: body.name, slug: body.slug,
@@ -252,7 +287,10 @@ router.put("/admin/products/:id", adminAuth, async (req, res) => {
     publisher: body.publisher, version: body.version, platform: body.platform,
     categoryId: Number(body.categoryId), features: body.features || [],
     deliveryMethod: body.deliveryMethod, inStock: Boolean(body.inStock),
-    isFeatured: Boolean(body.isFeatured), imageUrl: body.imageUrl || null,
+    isFeatured: Boolean(body.isFeatured),
+    published: body.published !== undefined ? Boolean(body.published) : true,
+    year: body.year !== undefined ? (body.year ? Number(body.year) : null) : undefined,
+    imageUrl: body.imageUrl || null,
     rating: body.rating ? String(body.rating) : "5.0",
     reviewCount: body.reviewCount || 0,
   }).where(eq(productsTable.id, id));
@@ -283,6 +321,8 @@ router.post("/admin/products", adminAuth, async (req, res) => {
     deliveryMethod: body.deliveryMethod || "Email delivery within 24 hours",
     inStock: Boolean(body.inStock),
     isFeatured: Boolean(body.isFeatured),
+    published: body.published !== undefined ? Boolean(body.published) : true,
+    year: body.year !== undefined ? (body.year ? Number(body.year) : null) : null,
     imageUrl: body.imageUrl || null,
     rating: body.rating ? String(body.rating) : "5.0",
     reviewCount: body.reviewCount || 0,
@@ -403,6 +443,187 @@ router.get("/admin/analytics", adminAuth, async (req, res) => {
     pageViews30d: Number(sd.page_views_30d ?? 0),
     topPages: topPagesRows.rows.map((r) => ({ page: String(r.page), views: Number(r.views) })),
   });
+});
+
+// ── Discount tiers (public) ──────────────────────────────────────────────────
+router.get("/discount-tiers", async (_req, res) => {
+  try {
+    const tiers = await getSetting("discount_tiers");
+    res.json(tiers ?? []);
+  } catch { res.json([]); }
+});
+
+// ── Discount tiers admin CRUD ─────────────────────────────────────────────────
+router.get("/admin/discount-tiers", adminAuth, async (_req, res) => {
+  const tiers = await getSetting("discount_tiers");
+  res.json(tiers ?? []);
+});
+
+router.put("/admin/discount-tiers", adminAuth, async (req, res) => {
+  const tiers = req.body as Array<{ minQty: number; maxQty: number | null; discountPercent: number; label: string }>;
+  if (!Array.isArray(tiers)) { res.status(400).json({ error: "Expected array" }); return; }
+  // Validate
+  for (const t of tiers) {
+    if (typeof t.minQty !== "number" || typeof t.discountPercent !== "number") {
+      res.status(400).json({ error: "Invalid tier format" }); return;
+    }
+    if (t.discountPercent < 0 || t.discountPercent > 80) {
+      res.status(400).json({ error: "Discount must be 0–80%" }); return;
+    }
+  }
+  await setSetting("discount_tiers", tiers);
+  res.json({ ok: true, tiers });
+});
+
+// ─── GET /api/admin/orders/:orderId ──────────────────────────────────────────
+router.get("/admin/orders/:orderId", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+
+    // Fetch user info if linked
+    let userInfo: { email: string; firstName?: string; lastName?: string } | null = null;
+    if (order.userId) {
+      const rows = await db.execute(sql`SELECT email, first_name, last_name FROM users WHERE id = ${order.userId}`);
+      if (rows.rows[0]) {
+        const u = rows.rows[0] as any;
+        userInfo = { email: u.email, firstName: u.first_name, lastName: u.last_name };
+      }
+    }
+
+    // Parse items JSON safely
+    let items: any[] = [];
+    try { if (order.itemsJson) items = JSON.parse(order.itemsJson); } catch {}
+
+    // Fetch shipping method details if available
+    let shippingMethod: { name: string; type: string } | null = null;
+    if (order.shippingMethodId) {
+      const rows = await db.execute(sql`SELECT name, type FROM shipping_methods WHERE id = ${order.shippingMethodId}`);
+      if (rows.rows[0]) {
+        const m = rows.rows[0] as any;
+        shippingMethod = { name: m.name, type: m.type };
+      }
+    }
+
+    res.json({
+      id: order.id,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      currency: order.currency,
+      // Financials
+      subtotalCents: order.subtotalCents,
+      couponCode: order.couponCode,
+      couponDiscountCents: order.couponDiscountCents,
+      shippingAmountCents: order.shippingAmountCents,
+      shippingMethodName: order.shippingMethodName ?? shippingMethod?.name,
+      shippingMethodType: shippingMethod?.type,
+      amountCents: order.amountCents,
+      // Items
+      items,
+      // Payment
+      paymentProvider: "Nexi",
+      nexiPaymentId: order.nexiPaymentId,
+      // Security token — masked, never full
+      nexiTokenPresent: !!order.nexiSecurityToken,
+      // Linked account
+      userId: order.userId,
+      userInfo,
+    });
+  } catch (e) {
+    (req as any).log?.error({ err: e }, "GET /admin/orders/:orderId error");
+    res.status(500).json({ error: "Failed to fetch order" });
+  }
+});
+
+// ─── Media Library ────────────────────────────────────────────────────────────
+const UPLOADS_DIR = process.env.UPLOADS_DIR
+  || path.join(process.cwd(), "uploads", "media");
+const UPLOADS_PUBLIC_BASE = process.env.UPLOADS_PUBLIC_BASE
+  || "/uploads/media";
+const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+// Ensure upload dir exists
+try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch {}
+
+// GET /api/admin/media — list all media
+router.get("/admin/media", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, filename, original_name, url, mime_type, size_bytes, created_at
+      FROM media ORDER BY created_at DESC
+    `);
+    res.json(rows.rows);
+  } catch { res.status(500).json({ error: "Failed to list media" }); }
+});
+
+// POST /api/admin/media/upload — upload image (base64 JSON body)
+router.post("/admin/media/upload", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const { filename: origName, mimeType, dataBase64 } = req.body as {
+      filename?: string; mimeType?: string; dataBase64?: string;
+    };
+
+    if (!origName || !mimeType || !dataBase64) {
+      res.status(400).json({ error: "filename, mimeType, dataBase64 required" }); return;
+    }
+    if (!ALLOWED_MIME.has(mimeType)) {
+      res.status(400).json({ error: "Only jpg, png, webp, gif allowed" }); return;
+    }
+
+    const buffer = Buffer.from(dataBase64, "base64");
+    if (buffer.byteLength > MAX_SIZE_BYTES) {
+      res.status(400).json({ error: "File exceeds 5 MB limit" }); return;
+    }
+
+    // Safe random filename
+    const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" } as Record<string,string>)[mimeType];
+    const safeName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const dest = path.join(UPLOADS_DIR, safeName);
+    fs.writeFileSync(dest, buffer);
+
+    const publicUrl = `${UPLOADS_PUBLIC_BASE}/${safeName}`;
+    const result = await db.execute(sql`
+      INSERT INTO media (filename, original_name, url, mime_type, size_bytes)
+      VALUES (${safeName}, ${origName}, ${publicUrl}, ${mimeType}, ${buffer.byteLength})
+      RETURNING *
+    `);
+    res.status(201).json(result.rows[0]);
+  } catch (e) {
+    (req as any).log?.error({ err: e }, "POST /admin/media/upload error");
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+// DELETE /api/admin/media/:id — delete media
+router.delete("/admin/media/:id", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const rows = await db.execute(sql`SELECT filename FROM media WHERE id = ${id}`);
+    const row = rows.rows[0] as any;
+    if (!row) { res.status(404).json({ error: "Media not found" }); return; }
+
+    // Check if used by any product
+    const usedBy = await db.execute(sql`
+      SELECT id, name FROM products WHERE image_url LIKE ${"%" + row.filename + "%"} LIMIT 5
+    `);
+    if ((usedBy.rows as any[]).length > 0) {
+      const names = (usedBy.rows as any[]).map(p => p.name).join(", ");
+      res.status(409).json({ error: `Image is used by products: ${names}` }); return;
+    }
+
+    // Delete file
+    const filePath = path.join(UPLOADS_DIR, row.filename);
+    try { fs.unlinkSync(filePath); } catch {}
+    await db.execute(sql`DELETE FROM media WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: "Delete failed" }); }
 });
 
 export default router;

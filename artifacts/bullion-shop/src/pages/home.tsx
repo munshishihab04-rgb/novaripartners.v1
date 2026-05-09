@@ -1,12 +1,56 @@
 import { Layout } from "@/components/layout";
-import { products } from "@/lib/data";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, TrendingUp, Lock, ArrowRight } from "lucide-react";
+import { ShieldCheck, TrendingUp, Lock, ArrowRight, Star } from "lucide-react";
 import { motion } from "framer-motion";
 
+type Review = {
+  store_review_id: number;
+  comments: string;
+  rating: number;
+  reviewer: { first_name: string; last_name: string; verified_buyer: string };
+  date_formatted: string;
+  timeago: string;
+};
+
+type FeaturedProduct = {
+  id: number;
+  slug: string;
+  name: string;
+  price: number;
+  imageUrl: string | null;
+  year: number | null;
+};
+
 export default function Home() {
-  const featured = products.filter(p => p.featured).slice(0, 4);
+  const [featured, setFeatured] = useState<FeaturedProduct[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewStats, setReviewStats] = useState<{ total: number; avg: string } | null>(null);
+
+  useEffect(() => {
+    // SEO
+    document.title = "Buy American Silver Eagles | NovariPartners.com";
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute('content', 'Buy 2020–2026 American Silver Eagle BU coins. .999 fine silver, fully insured shipping, transparent pricing. NovariPartners LLC.');
+  }, []);
+
+  useEffect(() => {
+    fetch("https://api.reviews.io/merchant/reviews?store=novaripartners.com&page=1&per_page=6")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { reviews?: Review[]; stats?: { total_reviews: number; average_rating: string } } | null) => {
+        if (d?.reviews) setReviews(d.reviews.filter(r => r.comments?.trim() && r.rating >= 4).slice(0, 6));
+        if (d?.stats) setReviewStats({ total: d.stats.total_reviews, avg: d.stats.average_rating });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/products/featured")
+      .then((res) => res.ok ? res.json() as Promise<FeaturedProduct[]> : Promise.resolve([]))
+      .then((data) => setFeatured(data.slice(0, 4)))
+      .catch(() => {});
+  }, []);
 
   return (
     <Layout>
@@ -99,19 +143,21 @@ export default function Home() {
                 transition={{ delay: i * 0.1 }}
                 className="group border border-border bg-card rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-md transition-all"
               >
-                <Link href={`/products/${product.id}`}>
+                <Link href={`/products/${product.slug}`}>
                   <div className="aspect-square bg-gray-50 p-8 relative overflow-hidden">
                     <img
-                      src={product.image}
+                      src={product.imageUrl || "/bullion-shop/silver-coin.png"}
                       alt={product.name}
                       className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
                     />
-                    <div className="absolute top-3 right-3 bg-primary text-white text-xs font-bold px-2 py-1 rounded">
-                      {product.year}
-                    </div>
+                    {product.year && (
+                      <div className="absolute top-3 right-3 bg-primary text-white text-xs font-bold px-2 py-1 rounded">
+                        {product.year}
+                      </div>
+                    )}
                   </div>
                   <div className="p-6">
-                    <div className="text-xs text-primary font-bold uppercase tracking-wider mb-2">{product.metal} • {product.weight}</div>
+                    <div className="text-xs text-primary font-bold uppercase tracking-wider mb-2">Silver • 1 Troy Oz</div>
                     <h3 className="font-serif text-base text-foreground mb-4 line-clamp-2 h-12 group-hover:text-primary transition-colors">{product.name}</h3>
                     <div className="flex items-center justify-between">
                       <div className="text-xl font-mono text-foreground font-semibold">${product.price.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
@@ -131,6 +177,65 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Reviews.io Section */}
+      {reviews.length > 0 && (
+        <section className="py-20 bg-gray-50 border-t border-border">
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-12">
+              <p className="text-xs font-bold text-primary uppercase tracking-widest mb-1">Verified Buyers</p>
+              <h2 className="text-3xl font-serif text-foreground mb-2">What Our Customers Say</h2>
+              {reviewStats && (
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <div className="flex">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} className={`w-5 h-5 ${ parseFloat(reviewStats.avg) >= s ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} />
+                    ))}
+                  </div>
+                  <span className="font-bold text-foreground">{reviewStats.avg}</span>
+                  <span className="text-muted-foreground text-sm">· {reviewStats.total.toLocaleString()} verified reviews</span>
+                  <a href="https://www.reviews.io/company-reviews/store/novaripartners.com" target="_blank" rel="noopener noreferrer" className="text-primary text-sm hover:underline ml-1">See all →</a>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {reviews.map((review, i) => (
+                <motion.div
+                  key={review.store_review_id}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.08 }}
+                  className="bg-white border border-border rounded-lg p-6 shadow-sm"
+                >
+                  <div className="flex items-center gap-1 mb-3">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} className={`w-4 h-4 ${review.rating >= s ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
+                    ))}
+                  </div>
+                  <p className="text-foreground text-sm leading-relaxed mb-4 line-clamp-4">&ldquo;{review.comments}&rdquo;</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{review.reviewer.first_name} {review.reviewer.last_name}</p>
+                      {review.reviewer.verified_buyer === 'yes' && (
+                        <p className="text-xs text-green-600 font-medium flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Verified Buyer</p>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{review.timeago}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            <div className="text-center mt-10">
+              <a href="https://www.reviews.io/company-reviews/store/novaripartners.com" target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-white font-semibold px-8">
+                  Read All {reviewStats?.total.toLocaleString()} Reviews on Reviews.io
+                </Button>
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* IRA Banner */}
       <section className="bg-primary/5 border-t border-primary/20 py-12">

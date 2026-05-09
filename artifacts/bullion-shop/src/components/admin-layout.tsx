@@ -1,11 +1,15 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Package, ShoppingBag, LogOut, ExternalLink, Store, Users } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, LogOut, ExternalLink, Store, Users, Tag, Ticket, Truck, Image } from "lucide-react";
 import { clearAdminSession } from "@/lib/admin-api";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag, exact: false },
   { href: "/admin/products", label: "Products", icon: Package, exact: false },
+  { href: "/admin/media", label: "Media", icon: Image, exact: false },
+  { href: "/admin/discounts", label: "Volume Discounts", icon: Tag, exact: false },
+  { href: "/admin/coupons", label: "Coupon Codes", icon: Ticket, exact: false },
+  { href: "/admin/shipping", label: "Shipping", icon: Truck, exact: false },
   { href: "/admin/visitors", label: "Live Visitors", icon: Users, exact: false },
 ];
 

@@ -1,7 +1,6 @@
 import { Layout } from "@/components/layout";
-import { products } from "@/lib/data";
 import { useCart } from "@/hooks/use-cart";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,15 +9,154 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+type ProductData = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  shortDescription: string;
+  price: number;
+  originalPrice?: number;
+  currency: string;
+  imageUrl: string | null;
+  publisher: string;
+  version: string;
+  year: number | null;
+  inStock: boolean;
+  isFeatured: boolean;
+  published: boolean;
+  features: string[];
+  deliveryMethod: string;
+};
+
 export default function ProductDetail({ params }: { params: { id: string } }) {
-  const product = products.find(p => p.id === params.id);
   const { addItem } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [qty, setQty] = useState(1);
   const [descExpanded, setDescExpanded] = useState(false);
 
-  if (!product) {
+  // Quantity discount tiers — loaded from API (flat $ per coin)
+  type DiscountTier = { minQty: number; maxQty: number | null; discountAmount: number; label: string };
+  const [discountTiers, setDiscountTiers] = useState<DiscountTier[]>([
+    { minQty: 1,  maxQty: 5,    discountAmount: 0.00, label: "1–5 coins" },
+    { minQty: 6,  maxQty: 9,    discountAmount: 0.20, label: "6–9 coins" },
+    { minQty: 10, maxQty: 19,   discountAmount: 0.50, label: "10–19 coins" },
+    { minQty: 20, maxQty: 49,   discountAmount: 1.00, label: "20–49 coins" },
+    { minQty: 50, maxQty: null, discountAmount: 1.50, label: "50+ coins" },
+  ]);
+
+  useEffect(() => {
+    fetch("/api/discount-tiers")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: DiscountTier[] | null) => { if (d?.length) setDiscountTiers(d); })
+      .catch(() => {});
+  }, []);
+
+  const getActiveTier = () => discountTiers.find(t => qty >= t.minQty && (t.maxQty === null || qty <= t.maxQty)) ?? discountTiers[0];
+  const getDiscountedPrice = (basePrice: number) => Math.max(0, Math.round((basePrice - getActiveTier().discountAmount) * 100) / 100);
+
+  const [product, setProduct] = useState<ProductData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [silverSpot, setSilverSpot] = useState<number | null>(null);
+
+  const slug = params.id;
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { spotPrices?: { silver: number } } | null) => {
+        if (d?.spotPrices?.silver) setSilverSpot(d.spotPrices.silver);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (product) {
+      document.title = `${product.name} | NovariPartners.com`;
+      const meta = document.querySelector('meta[name="description"]');
+      if (meta) meta.setAttribute('content', product.shortDescription || `Buy ${product.name} — .999 fine silver, BU quality, fully insured shipping. NovariPartners LLC.`);
+    }
+  }, [product]);
+
+  // JSON-LD Product schema per SEO (description da DB, non mostrata in UI)
+  useEffect(() => {
+    if (!product) return;
+    const existing = document.getElementById('product-jsonld');
+    if (existing) existing.remove();
+    const script = document.createElement('script');
+    script.id = 'product-jsonld';
+    script.type = 'application/ld+json';
+    script.text = JSON.stringify({
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      name: product.name,
+      description: product.description || product.shortDescription,
+      image: product.imageUrl ? [`https://novaripartners.com${product.imageUrl}`] : [],
+      sku: `ASE-${product.year}-BU`,
+      brand: { "@type": "Brand", name: "United States Mint" },
+      offers: {
+        "@type": "Offer",
+        url: `https://novaripartners.com/products/${product.slug}`,
+        priceCurrency: "USD",
+        price: product.price,
+        priceValidUntil: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+        availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        seller: { "@type": "Organization", name: "Novari Partners LLC" }
+      },
+      material: ".999 Fine Silver",
+      additionalProperty: [
+        { "@type": "PropertyValue", name: "Weight", value: "1 Troy Ounce" },
+        { "@type": "PropertyValue", name: "Purity", value: ".999 Fine Silver" },
+        { "@type": "PropertyValue", name: "Diameter", value: "40.6 mm" },
+        { "@type": "PropertyValue", name: "Mint", value: "United States Mint" },
+        { "@type": "PropertyValue", name: "Year", value: String(product.year) }
+      ]
+    });
+    document.head.appendChild(script);
+    return () => { document.getElementById('product-jsonld')?.remove(); };
+  }, [product]);
+
+  useEffect(() => {
+    setLoading(true);
+    setNotFound(false);
+    fetch(`/api/products/by-slug/${encodeURIComponent(slug)}`)
+      .then(async (res) => {
+        if (res.status === 404) { setNotFound(true); return; }
+        if (!res.ok) throw new Error("Server error");
+        const data = await res.json() as ProductData;
+        setProduct(data);
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="bg-gray-50 border-b border-border py-3">
+          <div className="container mx-auto px-4">
+            <Link href="/catalog" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Catalog
+            </Link>
+          </div>
+        </div>
+        <div className="container mx-auto px-4 py-24 max-w-6xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 animate-pulse">
+            <div className="aspect-square bg-gray-100 rounded-2xl" />
+            <div className="space-y-4">
+              <div className="h-4 bg-gray-100 rounded w-32" />
+              <div className="h-10 bg-gray-100 rounded w-3/4" />
+              <div className="h-24 bg-gray-100 rounded" />
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (notFound || !product) {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-24 text-center">
@@ -29,18 +167,40 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
     );
   }
 
+  const currentTier = getActiveTier();
+  const discountedPrice = getDiscountedPrice(Number(product.price));
+  const lineTotal = (discountedPrice * qty).toLocaleString("en-US", { minimumFractionDigits: 2 });
+  const unitPrice = discountedPrice.toLocaleString("en-US", { minimumFractionDigits: 2 });
+
   const handleAddToCart = () => {
-    addItem({ id: product.id, name: product.name, price: product.price, quantity: qty, image: product.image, type: product.type, metal: product.metal });
-    toast({ title: "Added to Cart", description: `${qty}× ${product.name} added to your cart.` });
+    addItem({
+      id: product.slug,
+      productId: product.id,
+      name: product.name,
+      price: discountedPrice,
+      originalPrice: Number(product.price),
+      quantity: qty,
+      image: product.imageUrl || "/bullion-shop/silver-coin.png",
+      type: "Coins",
+      metal: "Silver",
+    });
+    window.dispatchEvent(new Event("open-cart-drawer"));
   };
 
   const handleBuyNow = () => {
-    addItem({ id: product.id, name: product.name, price: product.price, quantity: qty, image: product.image, type: product.type, metal: product.metal });
+    addItem({
+      id: product.slug,
+      productId: product.id,
+      name: product.name,
+      price: discountedPrice,
+      originalPrice: Number(product.price),
+      quantity: qty,
+      image: product.imageUrl || "/bullion-shop/silver-coin.png",
+      type: "Coins",
+      metal: "Silver",
+    });
     setLocation("/checkout");
   };
-
-  const lineTotal = (product.price * qty).toLocaleString("en-US", { minimumFractionDigits: 2 });
-  const unitPrice = product.price.toLocaleString("en-US", { minimumFractionDigits: 2 });
 
   const badges = [
     { icon: ShieldCheck, label: "Authentic & Certified" },
@@ -49,13 +209,15 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
     { icon: Award, label: "US Mint Issued" },
   ];
 
-  const highlights = [
-    "One full troy ounce of .999 fine silver",
-    "Official United States Mint legal-tender bullion",
-    `${product.year} date — Brilliant Uncirculated (BU) grade`,
-    "Ships in tamper-evident protective capsule",
-    "IRS Form 1099-B compliant",
-  ];
+  const highlights = product.features.length > 0
+    ? product.features
+    : [
+        "One full troy ounce of .999 fine silver",
+        "Official United States Mint legal-tender bullion",
+        `${product.year ?? ""} date — Brilliant Uncirculated (BU) grade`,
+        "Ships in tamper-evident protective capsule",
+        "IRS Form 1099-B compliant",
+      ];
 
   return (
     <Layout>
@@ -75,13 +237,15 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
           <div className="mb-6 lg:mb-0">
             <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-border overflow-hidden aspect-square flex items-center justify-center shadow-md">
               <img
-                src={product.image}
+                src={product.imageUrl || "/bullion-shop/silver-coin.png"}
                 alt={product.name}
                 className="w-4/5 h-4/5 object-contain drop-shadow-2xl"
               />
-              <div className="absolute top-4 left-4 bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md tracking-wider">
-                {product.year}
-              </div>
+              {product.year && (
+                <div className="absolute top-4 left-4 bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md tracking-wider">
+                  {product.year}
+                </div>
+              )}
               <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm border border-border text-xs font-bold text-foreground px-3 py-1.5 rounded-full shadow-sm flex items-center gap-1.5">
                 <Star className="w-3.5 h-3.5 fill-primary text-primary" /> BU Grade
               </div>
@@ -102,7 +266,7 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
           <div className="flex flex-col">
             {/* Category */}
             <div className="mb-2">
-              <span className="text-xs text-primary font-bold uppercase tracking-widest">{product.metal} · {product.type} · US Mint</span>
+              <span className="text-xs text-primary font-bold uppercase tracking-widest">Silver · Coins · US Mint</span>
             </div>
 
             {/* Title */}
@@ -110,24 +274,62 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
 
             {/* Price block */}
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-5">
-              <div className="flex items-end justify-between">
+              <div className="flex items-end gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Price per coin</p>
                   <p className="text-3xl lg:text-4xl font-mono text-foreground font-bold">${unitPrice}</p>
+                  {currentTier.discountAmount > 0 && (
+                    <p className="text-xs text-muted-foreground line-through mt-0.5">${Number(product.price).toFixed(2)}</p>
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Spot Silver</p>
-                  <p className="text-sm font-mono text-muted-foreground">~$31.20/oz</p>
-                </div>
+                {currentTier.discountAmount > 0 && (
+                  <div className="mb-1">
+                    <span className="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                      Save ${currentTier.discountAmount.toFixed(2)}/coin
+                    </span>
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Cash / Wire / Check price · Any quantity · Price includes handling premium</p>
+              <p className="text-xs text-muted-foreground mt-2">Price includes handling premium · Free shipping over $500</p>
             </div>
 
-            {/* Description (collapsible on mobile) */}
-            <div className="mb-5">
-              <div className={`text-muted-foreground text-sm leading-relaxed ${!descExpanded ? "line-clamp-3 lg:line-clamp-none" : ""}`}>
-                {product.description}
+            {/* Volume discount tiers */}
+            <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2">🏷️ Volume Discounts</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {discountTiers.map(tier => (
+                  <button
+                    key={tier.minQty}
+                    type="button"
+                    onClick={() => setQty(tier.minQty === 1 ? 1 : tier.minQty)}
+                    className={`text-center p-2 rounded-lg border text-xs transition-all cursor-pointer ${
+                      qty >= tier.minQty && (tier.maxQty === null || qty <= tier.maxQty)
+                        ? 'bg-amber-500 border-amber-500 text-white font-bold ring-2 ring-amber-400'
+                        : 'bg-white border-amber-200 text-amber-900 hover:bg-amber-100'
+                    }`}>
+                    <p className="font-semibold">{tier.label}</p>
+                    {tier.discountAmount > 0
+                      ? <p>Save ${tier.discountAmount.toFixed(2)}/coin</p>
+                      : <p>Base price</p>
+                    }
+                  </button>
+                ))}
               </div>
+            </div>
+
+            {/* Out of stock banner */}
+            {!product.inStock && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5">
+                <p className="text-sm text-amber-700 font-medium">This coin is currently out of stock. Check back soon or browse other years.</p>
+              </div>
+            )}
+
+            {/* Description */}
+            <div className="mb-5">
+              <div
+                className={`prose prose-sm max-w-none text-muted-foreground text-sm leading-relaxed ${!descExpanded ? 'line-clamp-4 lg:line-clamp-none' : ''}`}
+                dangerouslySetInnerHTML={{ __html: product.shortDescription }}
+              />
               <button
                 className="lg:hidden flex items-center gap-1 text-primary text-xs font-medium mt-1.5"
                 onClick={() => setDescExpanded(!descExpanded)}
@@ -185,6 +387,7 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
                   variant="outline"
                   size="lg"
                   className="h-13 font-bold border-primary/40 text-primary hover:bg-primary/5 hover:border-primary"
+                  disabled={!product.inStock}
                 >
                   <ShoppingCart className="w-4 h-4 mr-2" />
                   Add to Cart
@@ -193,6 +396,7 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
                   onClick={handleBuyNow}
                   size="lg"
                   className="h-13 bg-primary hover:bg-primary/90 text-white font-bold"
+                  disabled={!product.inStock}
                 >
                   <Zap className="w-4 h-4 mr-2" />
                   Buy Now
@@ -219,10 +423,10 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
               <h3 className="text-foreground font-serif text-lg mb-3 border-b border-border pb-2">Specifications</h3>
               <dl className="divide-y divide-border text-sm">
                 {[
-                  ["Year", product.year],
-                  ["Metal Content", product.weight],
-                  ["Purity", product.purity],
-                  ["Mint", product.mint],
+                  ["Year", product.year ?? "—"],
+                  ["Metal Content", "1 Troy oz"],
+                  ["Purity", ".999 fine silver"],
+                  ["Mint", product.publisher],
                   ["Grade", "Brilliant Uncirculated (BU)"],
                   ["Face Value", "$1 USD (legal tender)"],
                   ["Diameter", "40.6 mm"],
@@ -266,10 +470,10 @@ export default function ProductDetail({ params }: { params: { id: string } }) {
             <p className="text-xs text-muted-foreground leading-none mb-0.5">Total for {qty} coin{qty > 1 ? "s" : ""}</p>
             <p className="text-lg font-mono font-bold text-foreground">${lineTotal}</p>
           </div>
-          <Button onClick={handleAddToCart} variant="outline" size="sm" className="border-primary/40 text-primary hover:bg-primary/5 h-11 px-4 font-bold">
+          <Button onClick={handleAddToCart} variant="outline" size="sm" className="border-primary/40 text-primary hover:bg-primary/5 h-11 px-4 font-bold" disabled={!product.inStock}>
             <ShoppingCart className="w-4 h-4" />
           </Button>
-          <Button onClick={handleBuyNow} size="sm" className="bg-primary hover:bg-primary/90 text-white h-11 px-6 font-bold flex-1">
+          <Button onClick={handleBuyNow} size="sm" className="bg-primary hover:bg-primary/90 text-white h-11 px-6 font-bold flex-1" disabled={!product.inStock}>
             Buy Now
           </Button>
         </div>

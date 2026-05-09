@@ -1,14 +1,51 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useCart } from "@/hooks/use-cart";
-import { spotPrices } from "@/lib/data";
-import { ShoppingCart, ShieldCheck, ChevronRight, Phone, Mail, MapPin, Menu, X } from "lucide-react";
+
+import { ShoppingCart, ShieldCheck, ChevronRight, Phone, Mail, MapPin, Menu, X, UserCircle } from "lucide-react";
+import { isLoggedIn, getStoredUser } from "@/lib/user-auth";
+import { CartDrawer } from "./cart-drawer";
 import { Button } from "./ui/button";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { itemCount } = useCart();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [userLoggedIn, setUserLoggedIn] = useState(isLoggedIn());
+
+  useEffect(() => {
+    const handler = () => setUserLoggedIn(isLoggedIn());
+    window.addEventListener("user-auth-changed", handler);
+    return () => window.removeEventListener("user-auth-changed", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setCartOpen(true);
+    window.addEventListener("open-cart-drawer", handler);
+    return () => window.removeEventListener("open-cart-drawer", handler);
+  }, []);
+  const [spotPrices, setSpotPrices] = useState({ gold: 2430, silver: 31.20, platinum: 1010 });
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { spotPrices?: { gold: number; silver: number; platinum: number } } | null) => {
+        if (d?.spotPrices) setSpotPrices(d.spotPrices);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Reviews.io floating badge
+  useEffect(() => {
+    if (document.getElementById('reviewsio-badge-script')) return;
+    const s = document.createElement('script');
+    s.id = 'reviewsio-badge-script';
+    s.src = 'https://widget.reviews.io/badge-float/dist/badge.js';
+    s.setAttribute('data-store', 'novaripartners.com');
+    s.setAttribute('data-position', 'right');
+    document.body.appendChild(s);
+  }, []);
 
   const navLinks = [
     { href: "/catalog", label: "Catalog" },
@@ -16,8 +53,8 @@ export function Layout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col font-sans">
-      {/* Spot Price Ticker */}
+    <>
+      <div className="min-h-screen flex flex-col font-sans">
       <div className="bg-gray-900 text-xs sm:text-sm text-gray-300 py-2 border-b border-gray-800">
         <div className="container mx-auto px-4 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-4 sm:gap-6 overflow-x-auto whitespace-nowrap">
@@ -58,8 +95,17 @@ export function Layout({ children }: { children: ReactNode }) {
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
-            <Link href="/cart">
-              <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-primary">
+            <a href="/account/auth" onClick={e => { e.preventDefault(); window.location.href = userLoggedIn ? "/account" : "/account/auth"; }}
+              className="hidden sm:flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted transition-colors">
+              <UserCircle className="w-4 h-4" />
+              <span>{userLoggedIn ? "Account" : "Sign In"}</span>
+              {userLoggedIn && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
+            </a>
+            <a href="/account" onClick={e => { e.preventDefault(); window.location.href = userLoggedIn ? "/account" : "/account/auth"; }}
+              className="sm:hidden p-2 text-muted-foreground hover:text-primary">
+              <UserCircle className="w-5 h-5" />
+            </a>
+            <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-primary" onClick={() => setCartOpen(true)}>
                 <ShoppingCart className="w-5 h-5" />
                 {itemCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-xs font-bold rounded-full flex items-center justify-center leading-none">
@@ -67,7 +113,6 @@ export function Layout({ children }: { children: ReactNode }) {
                   </span>
                 )}
               </Button>
-            </Link>
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
               className="md:hidden p-2 text-muted-foreground hover:text-primary transition-colors"
@@ -228,5 +273,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </footer>
     </div>
+    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+    </>
   );
 }

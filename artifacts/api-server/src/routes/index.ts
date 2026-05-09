@@ -6,6 +6,9 @@ import checkoutBullionRouter from "./checkout-bullion";
 import adminRouter from "./admin";
 import analyticsRouter from "./analytics";
 import configRouter from "./config";
+import userAuthRouter from "./user-auth";
+import couponsRouter from "./coupons";
+import shippingRouter from "./shipping";
 
 const router: IRouter = Router();
 
@@ -16,5 +19,8 @@ router.use(checkoutBullionRouter);
 router.use(adminRouter);
 router.use(analyticsRouter);
 router.use(configRouter);
+router.use(userAuthRouter);
+router.use(couponsRouter);
+router.use(shippingRouter);
 
 export default router;
