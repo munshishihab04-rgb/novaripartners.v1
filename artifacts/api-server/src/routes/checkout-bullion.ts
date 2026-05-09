@@ -72,7 +72,7 @@ async function sendOrderConfirmationEmail(opts: {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "NOVARI PARTNERS <contact@novaripartnersllc.com>",
+        from: "NOVARI PARTNERS <contact@novaripartners.com>",
         to: [opts.to],
         subject: `Order Confirmed — ${opts.orderId}`,
         html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px;">
@@ -83,7 +83,7 @@ async function sendOrderConfirmationEmail(opts: {
             <p style="color:#888;font-size:13px;margin:8px 0 0;">American Silver Eagle BU Coin(s) — .999 Fine Silver</p>
           </div>
           <p style="color:#555;font-size:14px;">We will ship within 2 business days.<br>
-            Questions? <a href="mailto:contact@novaripartnersllc.com">contact@novaripartnersllc.com</a></p>
+            Questions? <a href="mailto:contact@novaripartners.com">contact@novaripartners.com</a></p>
           <p style="color:#aaa;font-size:12px;margin-top:28px;">NOVARI PARTNERS LLC — 30 N Gould St Ste R, Sheridan, WY 82801</p>
         </div>`,
       }),
