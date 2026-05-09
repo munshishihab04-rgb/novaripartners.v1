@@ -541,89 +541,93 @@ router.get("/admin/orders/:orderId", adminAuth, async (req: Request, res: Respon
 
 // ─── Media Library ────────────────────────────────────────────────────────────
 const UPLOADS_DIR = process.env.UPLOADS_DIR
-  || path.join(process.cwd(), "uploads", "media");
+  ?? "/home/ubuntu/novari/uploads/media";
 const UPLOADS_PUBLIC_BASE = process.env.UPLOADS_PUBLIC_BASE
-  || "/uploads/media";
-const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  ?? "/uploads/media";
+
+const MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+const ALLOWED_MIME = new Set(Object.keys(MIME_TO_EXT));
+const BLOCKED_EXT = new Set(["js","ts","html","htm","php","svg","exe","zip","sh","py","rb","bat","css","json"]);
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-// Ensure upload dir exists
 try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch {}
 
-// GET /api/admin/media — list all media
+// GET /api/admin/media - list all media files
 router.get("/admin/media", adminAuth, async (req: Request, res: Response) => {
   try {
     const rows = await db.execute(sql`
-      SELECT id, filename, original_name, url, mime_type, size_bytes, created_at
+      SELECT id, filename, original_name, url, mime_type, size_bytes, created_at, updated_at, uploaded_by
       FROM media ORDER BY created_at DESC
     `);
     res.json(rows.rows);
   } catch { res.status(500).json({ error: "Failed to list media" }); }
 });
 
-// POST /api/admin/media/upload — upload image (base64 JSON body)
+// POST /api/admin/media/upload - upload image via base64 JSON (no multer needed)
 router.post("/admin/media/upload", adminAuth, async (req: Request, res: Response) => {
   try {
     const { filename: origName, mimeType, dataBase64 } = req.body as {
       filename?: string; mimeType?: string; dataBase64?: string;
     };
-
     if (!origName || !mimeType || !dataBase64) {
       res.status(400).json({ error: "filename, mimeType, dataBase64 required" }); return;
     }
     if (!ALLOWED_MIME.has(mimeType)) {
       res.status(400).json({ error: "Only jpg, png, webp, gif allowed" }); return;
     }
-
+    const origExt = (origName.split(".").pop() || "").toLowerCase();
+    if (BLOCKED_EXT.has(origExt)) {
+      res.status(400).json({ error: "File type not allowed: " + origExt }); return;
+    }
     const buffer = Buffer.from(dataBase64, "base64");
     if (buffer.byteLength > MAX_SIZE_BYTES) {
       res.status(400).json({ error: "File exceeds 5 MB limit" }); return;
     }
-
-    // Safe random filename
-    const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" } as Record<string,string>)[mimeType];
-    const safeName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    if (buffer.byteLength < 8) {
+      res.status(400).json({ error: "File too small or empty" }); return;
+    }
+    const ext = MIME_TO_EXT[mimeType];
+    const safeName = Date.now() + "-" + Math.random().toString(36).slice(2, 9) + "." + ext;
     const dest = path.join(UPLOADS_DIR, safeName);
     fs.writeFileSync(dest, buffer);
-
-    const publicUrl = `${UPLOADS_PUBLIC_BASE}/${safeName}`;
+    const publicUrl = UPLOADS_PUBLIC_BASE + "/" + safeName;
+    const adminLabel = "admin";
     const result = await db.execute(sql`
-      INSERT INTO media (filename, original_name, url, mime_type, size_bytes)
-      VALUES (${safeName}, ${origName}, ${publicUrl}, ${mimeType}, ${buffer.byteLength})
-      RETURNING *
+      INSERT INTO media (filename, original_name, url, mime_type, size_bytes, file_path, uploaded_by)
+      VALUES (${safeName}, ${origName.slice(0, 255)}, ${publicUrl}, ${mimeType}, ${buffer.byteLength},
+              ${dest}, ${adminLabel})
+      RETURNING id, filename, original_name, url, mime_type, size_bytes, created_at, uploaded_by
     `);
     res.status(201).json(result.rows[0]);
   } catch (e) {
-    (req as any).log?.error({ err: e }, "POST /admin/media/upload error");
+    (req as any).log?.error({ err: e, filename: (req.body as any)?.filename }, "media upload error");
     res.status(500).json({ error: "Upload failed" });
   }
 });
 
-// DELETE /api/admin/media/:id — delete media
+// DELETE /api/admin/media/:id - delete, blocked if used by products
 router.delete("/admin/media/:id", adminAuth, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-    const rows = await db.execute(sql`SELECT filename FROM media WHERE id = ${id}`);
+    const rows = await db.execute(sql`SELECT filename, file_path FROM media WHERE id = ${id}`);
     const row = rows.rows[0] as any;
     if (!row) { res.status(404).json({ error: "Media not found" }); return; }
-
-    // Check if used by any product
-    const usedBy = await db.execute(sql`
-      SELECT id, name FROM products WHERE image_url LIKE ${"%" + row.filename + "%"} LIMIT 5
-    `);
+    const likePattern = "%" + row.filename + "%";
+    const usedBy = await db.execute(sql`SELECT id, name FROM products WHERE image_url LIKE ${likePattern} LIMIT 5`);
     if ((usedBy.rows as any[]).length > 0) {
-      const names = (usedBy.rows as any[]).map(p => p.name).join(", ");
-      res.status(409).json({ error: `Image is used by products: ${names}` }); return;
+      const names = (usedBy.rows as any[]).map((p: any) => p.name).join(", ");
+      res.status(409).json({ error: "Image in use by: " + names + ". Remove from products first." }); return;
     }
-
-    // Delete file
-    const filePath = path.join(UPLOADS_DIR, row.filename);
+    const filePath = row.file_path || path.join(UPLOADS_DIR, row.filename);
     try { fs.unlinkSync(filePath); } catch {}
     await db.execute(sql`DELETE FROM media WHERE id = ${id}`);
     res.json({ ok: true });
   } catch { res.status(500).json({ error: "Delete failed" }); }
 });
-
 export default router;

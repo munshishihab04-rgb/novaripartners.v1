@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
 import {
@@ -6,6 +6,7 @@ import {
   type AdminProduct,
   type AdminProductFull,
   type AdminCategory,
+  type AdminMedia,
   type ImportResult,
   isAdminAuthenticated,
 } from "@/lib/admin-api";
@@ -22,10 +23,150 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   RefreshCw, Pencil, Search, Package2, Download, Upload,
-  CheckSquare, Square, CheckCircle2, AlertCircle, X, Plus, Trash2,
+  CheckSquare, Square, CheckCircle2, AlertCircle, X, Plus, Trash2, Image as ImageIcon, FolderOpen,
 } from "lucide-react";
 
 const PLATFORMS = ["windows", "macos", "cross-platform"] as const;
+
+// ─── Image Picker Field ─────────────────────────────────────────────────────
+function ImagePickerField({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const [mediaList, setMediaList] = useState<AdminMedia[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [uploadingInline, setUploadingInline] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const openPicker = () => {
+    setShowPicker(true);
+    setMediaLoading(true);
+    adminApi.getMedia()
+      .then(setMediaList)
+      .catch(() => toast({ title: "Error", description: "Could not load media", variant: "destructive" }))
+      .finally(() => setMediaLoading(false));
+  };
+
+  const handleInlineUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const ALLOWED = ["image/jpeg","image/png","image/webp","image/gif"];
+    if (!ALLOWED.includes(file.type)) {
+      toast({ title: "Invalid type", description: "Only jpg, png, webp, gif", variant: "destructive" }); return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Too large", description: "Max 5 MB", variant: "destructive" }); return;
+    }
+    setUploadingInline(true);
+    try {
+      const result = await adminApi.uploadMedia(file);
+      onChange(result.url);
+      toast({ title: "Uploaded", description: file.name });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally { setUploadingInline(false); }
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* URL manual input */}
+      <input
+        className="w-full h-9 px-3 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="/coins/eagle.png or https://..."
+      />
+
+      {/* Buttons row */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploadingInline}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input bg-white hover:bg-slate-50 disabled:opacity-50 transition-colors"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          {uploadingInline ? "Uploading…" : "Upload"}
+        </button>
+        <button
+          type="button"
+          onClick={openPicker}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input bg-white hover:bg-slate-50 transition-colors"
+        >
+          <FolderOpen className="w-3.5 h-3.5" />
+          Media Library
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+          >
+            <X className="w-3.5 h-3.5" /> Clear
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleInlineUpload} />
+      </div>
+
+      {/* Preview */}
+      {value && (
+        <div className="relative w-24 h-24 rounded-xl border border-border bg-slate-50 overflow-hidden">
+          <img
+            src={value}
+            alt="preview"
+            className="w-full h-full object-contain"
+            onError={e => { (e.target as HTMLImageElement).style.opacity = "0.2"; }}
+          />
+        </div>
+      )}
+
+      {/* Media picker modal */}
+      {showPicker && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setShowPicker(false)} />
+          <div className="fixed inset-x-4 top-16 bottom-16 z-50 bg-white rounded-2xl shadow-2xl flex flex-col max-w-4xl mx-auto overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-bold text-slate-800">Choose from Media Library</h3>
+              <button onClick={() => setShowPicker(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {mediaLoading ? (
+                <div className="grid grid-cols-4 gap-3">
+                  {[...Array(8)].map((_, i) => <div key={i} className="aspect-square bg-slate-100 rounded-xl animate-pulse" />)}
+                </div>
+              ) : mediaList.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <ImageIcon className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p>No media uploaded yet.</p>
+                  <p className="text-xs mt-1">Go to Media Library to upload images.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                  {mediaList.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => { onChange(m.url); setShowPicker(false); }}
+                      className="group relative aspect-square bg-slate-50 border border-border rounded-xl overflow-hidden hover:border-primary hover:ring-2 hover:ring-primary/30 transition-all text-left"
+                    >
+                      <img src={m.url} alt={m.original_name} className="w-full h-full object-cover" loading="lazy" />
+                      <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-white text-xs truncate">{m.original_name}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 function InStockBadge({ inStock }: { inStock: boolean }) {
   return (
@@ -138,9 +279,12 @@ function ProductForm({ f, setF, categories }: {
           <label className={label}>Year (optional)</label>
           <input type="number" min="1986" max="2099" className={input} value={f.year} onChange={(e) => setF({ year: e.target.value })} placeholder="e.g. 2025" />
         </div>
-        <div>
-          <label className={label}>Image URL</label>
-          <input className={input} value={f.imageUrl} onChange={(e) => setF({ imageUrl: e.target.value })} placeholder="https://..." />
+        <div className="col-span-2">
+          <label className={label}>Image</label>
+          <ImagePickerField
+            value={f.imageUrl}
+            onChange={(url) => setF({ imageUrl: url })}
+          />
         </div>
         <div>
           <label className={label}>Rating (0–5)</label>
