@@ -16,11 +16,14 @@ async function sendOrderConfirmationEmail(opts: {
   orderId: string;
   amountCents: number;
   currency: string;
-}) {
-  if (!RESEND_API_KEY) return; // silently skip if not configured
+}, log?: import("pino").Logger): Promise<boolean> {
+  if (!RESEND_API_KEY) {
+    (log ?? console).warn({ orderId: opts.orderId } as any, "email: RESEND_API_KEY not set");
+    return false;
+  }
   try {
     const amount = (opts.amountCents / 100).toLocaleString("en-US", { style: "currency", currency: opts.currency });
-    await fetch("https://api.resend.com/emails", {
+    const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -42,7 +45,19 @@ async function sendOrderConfirmationEmail(opts: {
           </div>`,
       }),
     });
-  } catch { /* non-blocking */ }
+    if (r.ok) {
+      const body = await r.json() as { id?: string };
+      (log ?? console).info?.({ orderId: opts.orderId, to: opts.to, resendId: body.id } as any, "email: confirmation sent OK");
+      return true;
+    } else {
+      const errBody = await r.text();
+      (log ?? console).error?.({ orderId: opts.orderId, status: r.status, err: errBody } as any, "email: Resend API error");
+      return false;
+    }
+  } catch (e) {
+    (log ?? console).error?.({ orderId: opts.orderId, err: String(e) } as any, "email: unexpected error");
+    return false;
+  }
 }
 const NEXI_BASE =
   NEXI_ENV === "production"
@@ -202,6 +217,15 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
   }
 
   if (order.status === "paid") {
+    // Attempt email if never sent (e.g. domain was unverified at payment time)
+    if (!order.confirmationEmailSentAt && order.customerEmail) {
+      const emailOpts = { to: order.customerEmail, customerName: order.customerName, orderId: order.id, amountCents: order.amountCents, currency: order.currency };
+      const sent = await sendOrderConfirmationEmail(emailOpts, req.log);
+      if (sent) {
+        await db.update(ordersTable).set({ confirmationEmailSentAt: new Date() })
+          .where(eq(ordersTable.id, orderId)).catch(() => {});
+      }
+    }
     res.json({ orderId, status: "paid" });
     return;
   }
@@ -252,14 +276,14 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
     .set({ status, ...(operationId ? { nexiPaymentId: operationId } : {}), updatedAt: new Date() })
     .where(eq(ordersTable.id, orderId));
 
-  if (status === "paid") {
-    sendOrderConfirmationEmail({
-      to: order.customerEmail,
-      customerName: order.customerName,
-      orderId: order.id,
-      amountCents: order.amountCents,
-      currency: order.currency,
-    });
+  // Send confirmation email exactly once (idempotency via DB flag)
+  if (status === "paid" && !order.confirmationEmailSentAt) {
+    const emailOpts = { to: order.customerEmail, customerName: order.customerName, orderId: order.id, amountCents: order.amountCents, currency: order.currency };
+    const sent = await sendOrderConfirmationEmail(emailOpts, req.log);
+    if (sent) {
+      await db.update(ordersTable).set({ confirmationEmailSentAt: new Date() })
+        .where(eq(ordersTable.id, orderId)).catch(() => {});
+    }
   }
 
   res.json({ orderId, status, operationResult });
@@ -360,15 +384,14 @@ router.post("/checkout/notify", async (req, res) => {
         { orderId, operationResult, oldStatus: order.status, newStatus },
         "Nexi notify: order status updated"
       );
-      // Send email confirmation when order becomes paid
-      if (newStatus === "paid" && order.customerEmail) {
-        sendOrderConfirmationEmail({
-          to: order.customerEmail,
-          customerName: order.customerName,
-          orderId: order.id,
-          amountCents: order.amountCents,
-          currency: order.currency,
-        });
+      // Send confirmation email exactly once (idempotency via DB flag)
+      if (newStatus === "paid" && order.customerEmail && !order.confirmationEmailSentAt) {
+        const emailOpts = { to: order.customerEmail, customerName: order.customerName, orderId: order.id, amountCents: order.amountCents, currency: order.currency };
+        const sent = await sendOrderConfirmationEmail(emailOpts, req.log);
+        if (sent) {
+          await db.update(ordersTable).set({ confirmationEmailSentAt: new Date() })
+            .where(eq(ordersTable.id, order.id)).catch(() => {});
+        }
       }
     } else {
       req.log.info({ orderId, operationResult }, "Nexi notify: no status change");

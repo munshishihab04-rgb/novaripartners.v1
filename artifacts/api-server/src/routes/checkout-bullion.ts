@@ -61,11 +61,14 @@ function extractUserId(req: any): number | null {
 
 async function sendOrderConfirmationEmail(opts: {
   to: string; customerName: string; orderId: string; amountCents: number;
-}) {
-  if (!RESEND_API_KEY) return;
+}, log?: import("pino").Logger): Promise<boolean> {
+  if (!RESEND_API_KEY) {
+    (log ?? console).warn?.({ orderId: opts.orderId } as any, "email: RESEND_API_KEY not set");
+    return false;
+  }
   try {
     const amount = (opts.amountCents / 100).toLocaleString("en-US", { style: "currency", currency: CURRENCY });
-    await fetch("https://api.resend.com/emails", {
+    const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -85,7 +88,19 @@ async function sendOrderConfirmationEmail(opts: {
         </div>`,
       }),
     });
-  } catch { /* non-blocking */ }
+    if (r.ok) {
+      const body = await r.json() as { id?: string };
+      (log ?? console).info?.({ orderId: opts.orderId, to: opts.to, resendId: body.id } as any, "email: confirmation sent OK");
+      return true;
+    } else {
+      const errBody = await r.text();
+      (log ?? console).error?.({ orderId: opts.orderId, status: r.status, err: errBody } as any, "email: Resend API error");
+      return false;
+    }
+  } catch (e) {
+    (log ?? console).error?.({ orderId: opts.orderId, err: String(e) } as any, "email: unexpected error");
+    return false;
+  }
 }
 
 type DiscountTier = { minQty: number; maxQty: number | null; discountAmount: number };
@@ -334,6 +349,14 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
   if (order.status === "paid") {
+    // Attempt email if never sent (e.g. domain was unverified at payment time)
+    if (!order.confirmationEmailSentAt && order.customerEmail) {
+      const sent = await sendOrderConfirmationEmail({ to: order.customerEmail, customerName: order.customerName, orderId, amountCents: order.amountCents }, req.log);
+      if (sent) {
+        await db.update(ordersTable).set({ confirmationEmailSentAt: new Date() })
+          .where(eq(ordersTable.id, orderId)).catch(() => {});
+      }
+    }
     res.json({ orderId, status: "paid", amountCents: order.amountCents, shippingAmountCents: order.shippingAmountCents, shippingMethodName: order.shippingMethodName });
     return;
   }
@@ -357,9 +380,13 @@ router.get("/checkout/verify/:orderId", async (req, res) => {
 
   await db.update(ordersTable).set({ status }).where(eq(ordersTable.id, orderId));
 
-  // Send confirmation email on first paid verify
-  if (status === "paid") {
-    sendOrderConfirmationEmail({ to: order.customerEmail, customerName: order.customerName, orderId, amountCents: order.amountCents });
+  // Send confirmation email exactly once (idempotency via DB flag)
+  if (status === "paid" && !order.confirmationEmailSentAt) {
+    const sent = await sendOrderConfirmationEmail({ to: order.customerEmail, customerName: order.customerName, orderId, amountCents: order.amountCents }, req.log);
+    if (sent) {
+      await db.update(ordersTable).set({ confirmationEmailSentAt: new Date() })
+        .where(eq(ordersTable.id, orderId)).catch(() => {});
+    }
   }
 
   req.log.info({ orderId, operationResult, status }, "Order verified from Nexi");

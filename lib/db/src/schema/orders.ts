@@ -21,6 +21,7 @@ export const ordersTable = pgTable("orders", {
   volumeDiscountCents:   integer("volume_discount_cents").notNull().default(0),
   createdAt:             timestamp("created_at").defaultNow().notNull(),
   updatedAt:             timestamp("updated_at").defaultNow().notNull(),
+  confirmationEmailSentAt: timestamp("confirmation_email_sent_at"),
 });
 
 export type Order = typeof ordersTable.$inferSelect;
