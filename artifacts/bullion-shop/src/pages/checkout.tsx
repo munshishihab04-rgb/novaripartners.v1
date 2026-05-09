@@ -329,7 +329,7 @@ export default function Checkout() {
                 onLoad={handleIframeLoad}
                 onError={handleIframeError}
                 className="w-full h-full border-0"
-                title="Nexi XPay Secure Payment"
+                title="Secure Payment"
                 allow="payment"
                 referrerPolicy="no-referrer"
                 sandbox="allow-scripts allow-forms allow-same-origin allow-top-navigation allow-popups"
@@ -342,8 +342,8 @@ export default function Checkout() {
                   <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <AlertTriangle className="w-7 h-7 text-amber-500" />
                   </div>
-                  <h2 className="text-lg font-bold text-slate-800 mb-2">Continue on Nexi</h2>
-                  <p className="text-sm text-slate-500 mb-6">Click below to complete your payment on Nexi's secure page.</p>
+                  <h2 className="text-lg font-bold text-slate-800 mb-2">Complete Your Payment</h2>
+                  <p className="text-sm text-slate-500 mb-6">Click below to complete your payment on our secure checkout page.</p>
                   <Button className="w-full mb-3 bg-primary hover:bg-primary/90 text-white" onClick={handleFallbackRedirect}>
                     <ExternalLink className="w-4 h-4 mr-2" />
                     Complete Payment
@@ -368,7 +368,7 @@ export default function Checkout() {
             <Lock className="w-4 h-4 text-primary" />
             <h1 className="text-2xl font-serif text-foreground">Secure Checkout</h1>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">256-bit encrypted · Powered by Nexi XPay</p>
+          <p className="text-xs text-muted-foreground mt-1">256-bit SSL encrypted · PCI-DSS certified</p>
         </div>
       </div>
 
@@ -528,7 +528,7 @@ export default function Checkout() {
                 <div className="flex items-center gap-2 mb-4">
                   <CreditCard className="w-4 h-4 text-primary shrink-0" />
                   <p className="text-sm text-muted-foreground">
-                    Secure payment processed by <span className="font-semibold text-foreground">Nexi XPay</span>. We accept:
+                    Secure payment processed by our <span className="font-semibold text-foreground">PCI-DSS certified gateway</span>. We accept:
                   </p>
                 </div>
 
@@ -553,7 +553,7 @@ export default function Checkout() {
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
                   <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <p className="text-xs text-slate-500">
-                    Your card details are entered securely on Nexi's encrypted page. We never store your payment information.
+                    Your card details are entered on a bank-level encrypted page. We never store your payment information.
                   </p>
                 </div>
               </div>
@@ -676,7 +676,7 @@ export default function Checkout() {
               <h3 className="text-sm font-semibold text-foreground">Safe & Secure Payment</h3>
               {[
                 { icon: Lock, text: "256-bit SSL encrypted connection" },
-                { icon: ShieldCheck, text: "Powered by Nexi XPay payment gateway" },
+                { icon: ShieldCheck, text: "PCI-DSS certified payment gateway" },
                 { icon: Package, text: "Fully insured shipping — Lloyd's of London" },
               ].map((item, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm text-muted-foreground">

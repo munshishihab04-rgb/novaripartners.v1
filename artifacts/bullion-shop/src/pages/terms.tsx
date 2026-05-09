@@ -49,7 +49,7 @@ export default function Terms() {
 
           <section>
             <h2 className="text-lg font-serif text-foreground mb-3">5. Payment</h2>
-            <p>We accept payment via major credit and debit cards through our secure payment processor (Nexi XPay). All card data is handled by Nexi and is never stored on our servers. By placing an order you authorize the charge to your payment method.</p>
+            <p>We accept payment via major credit and debit cards through our secure, PCI-DSS certified payment processor. All card data is handled directly by the payment gateway and is never stored on our servers. By placing an order you authorize the charge to your payment method.</p>
             <p className="mt-2">Wire transfer, certified check, and money order payments may be available by contacting us directly. Orders paid by check or wire are held until funds are confirmed cleared.</p>
           </section>
 

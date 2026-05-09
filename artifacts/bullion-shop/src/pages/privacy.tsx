@@ -37,7 +37,7 @@ export default function Privacy() {
               <li><strong className="text-foreground">Technical data:</strong> IP address, browser type, device information, pages visited.</li>
               <li><strong className="text-foreground">Usage data:</strong> how you interact with our Site.</li>
             </ul>
-            <p className="mt-3">We do <strong className="text-foreground">not</strong> store credit/debit card numbers. All payment data is processed and stored by Nexi XPay in accordance with PCI DSS standards.</p>
+            <p className="mt-3">We do <strong className="text-foreground">not</strong> store credit/debit card numbers. All payment data is processed by our PCI-DSS certified payment processor. Card data is never stored on our servers.</p>
           </section>
 
           <section>
@@ -61,7 +61,7 @@ export default function Privacy() {
             <h2 className="text-lg font-serif text-foreground mb-3">5. Sharing Your Information</h2>
             <p>We do not sell or rent your personal data to third parties. We may share your data with:</p>
             <ul className="list-disc list-inside space-y-1.5 mt-2">
-              <li><strong className="text-foreground">Payment processors</strong> (Nexi XPay) to process your payment.</li>
+              <li><strong className="text-foreground">Payment processors</strong> (our certified payment gateway) to process your payment.</li>
               <li><strong className="text-foreground">Shipping carriers</strong> to deliver your order.</li>
               <li><strong className="text-foreground">Government authorities</strong> where required by law (e.g., IRS, FinCEN).</li>
               <li><strong className="text-foreground">Professional advisors</strong> (attorneys, accountants) under confidentiality obligations.</li>
